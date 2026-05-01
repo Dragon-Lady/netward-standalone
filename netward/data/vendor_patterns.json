@@ -1,0 +1,371 @@
+{
+  "version": 1,
+  "description": "Net Ward vendor pattern set v0.2 — default deception layer shipped with the package. Patterns are origin='vendor'; operators can disable individually via CLI.",
+  "mirror_responses": [
+    {
+      "id": "env_fake_blank",
+      "matches_pattern_id": "env_file_probe",
+      "intensity": "minimal",
+      "http_status": 200,
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Request-Id": "{{request_id}}"
+      },
+      "body_template": "# Environment configuration\n# Last updated: {{timestamp}}\n\nAPP_ENV=production\nDEBUG=false\nLOG_LEVEL=info\n",
+      "body_template_vars": {
+        "request_id": "fake_id",
+        "timestamp": "timestamp"
+      },
+      "description": "Fake .env file that looks plausible but contains no real values — bot exfiltrates noise",
+      "created_at": 0
+    },
+    {
+      "id": "git_config_fake",
+      "matches_pattern_id": "git_config_probe",
+      "intensity": "moderate",
+      "http_status": 200,
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8"
+      },
+      "body_template": "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n[remote \"origin\"]\n\turl = https://example.invalid/{{fake_repo}}.git\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n",
+      "body_template_vars": {
+        "fake_repo": "fake_id"
+      },
+      "description": "Fake .git/config pointing at unreachable example.invalid",
+      "created_at": 0
+    },
+    {
+      "id": "aws_credentials_fake",
+      "matches_pattern_id": "aws_credentials_probe",
+      "intensity": "moderate",
+      "http_status": 200,
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8"
+      },
+      "body_template": "[default]\naws_access_key_id = AKIA{{fake_key}}\naws_secret_access_key = {{aws_blob}}\nregion = us-east-1\n",
+      "body_template_vars": {
+        "fake_key": "fake_id",
+        "aws_blob": "fake_token"
+      },
+      "description": "Fake AWS credentials — useless tokens that look like the real shape",
+      "created_at": 0
+    },
+    {
+      "id": "shell_uploader_404_lookalike",
+      "matches_pattern_id": "shell_uploader_probe",
+      "intensity": "minimal",
+      "http_status": 404,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Server": "nginx"
+      },
+      "body_template": "<html>\n<head><title>404 Not Found</title></head>\n<body>\n<center><h1>404 Not Found</h1></center>\n<hr><center>nginx</center>\n</body>\n</html>\n",
+      "body_template_vars": {},
+      "description": "Vanilla nginx 404 — shell uploaders see 'no shell here', move on",
+      "created_at": 0
+    },
+    {
+      "id": "scanner_ua_redirect",
+      "matches_pattern_id": "scanner_ua_probe",
+      "intensity": "minimal",
+      "http_status": 302,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Location": "{{honeypot_path}}"
+      },
+      "body_template": "<html><body>Redirecting...</body></html>\n",
+      "body_template_vars": {
+        "honeypot_path": "fake_redirect"
+      },
+      "description": "Scanner UAs (sqlmap/nikto/nuclei/masscan) get redirected into honeypot paths so their crawl wastes time on Net Ward decoys",
+      "created_at": 0
+    },
+    {
+      "id": "wordpress_admin_fake_login",
+      "matches_pattern_id": "wordpress_admin_probe",
+      "intensity": "moderate",
+      "http_status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "X-Request-Id": "{{request_id}}"
+      },
+      "body_template": "<!doctype html>\n<html><head><title>Log In</title></head><body><main><h1>Log In</h1><form method=\"post\" action=\"/wp-login.php\"><input type=\"hidden\" name=\"redirect_to\" value=\"/wp-admin/\"><input type=\"hidden\" name=\"_wpnonce\" value=\"{{nonce}}\"><label>Username <input name=\"log\" autocomplete=\"username\"></label><label>Password <input name=\"pwd\" type=\"password\" autocomplete=\"current-password\"></label><button type=\"submit\">Log In</button></form><p id=\"nav\"><a href=\"/wp-login.php?action=lostpassword\">Lost your password?</a></p></main></body></html>\n",
+      "body_template_vars": {
+        "request_id": "fake_id",
+        "nonce": "fake_id"
+      },
+      "description": "Fake WordPress admin/login page with harmless nonce noise",
+      "created_at": 0
+    },
+    {
+      "id": "wordpress_xmlrpc_fake_method_response",
+      "matches_pattern_id": "wordpress_xmlrpc_probe",
+      "intensity": "minimal",
+      "http_status": 200,
+      "headers": {
+        "Content-Type": "text/xml; charset=utf-8"
+      },
+      "body_template": "<?xml version=\"1.0\"?>\n<methodResponse><params><param><value><struct><member><name>faultCode</name><value><int>{{fault_code}}</int></value></member><member><name>faultString</name><value><string>XML-RPC services are disabled on this site.</string></value></member></struct></value></param></params></methodResponse>\n",
+      "body_template_vars": {
+        "fault_code": "random_int:401:499"
+      },
+      "description": "Fake XML-RPC methodResponse that looks closed without exposing upstream behavior",
+      "created_at": 0
+    },
+    {
+      "id": "generic_admin_portal_fake",
+      "matches_pattern_id": "generic_admin_login_probe",
+      "intensity": "moderate",
+      "http_status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store"
+      },
+      "body_template": "<!doctype html>\n<html><head><title>Admin Portal</title></head><body><section><h1>Admin Portal</h1><form method=\"post\" action=\"/admin/login\"><input type=\"hidden\" name=\"csrf\" value=\"{{csrf_id}}\"><label>User <input name=\"username\"></label><label>Pass <input name=\"pass\" type=\"password\"></label><button type=\"submit\">Sign in</button></form><p>Session {{session_id}}</p></section></body></html>\n",
+      "body_template_vars": {
+        "csrf_id": "fake_id",
+        "session_id": "uuid"
+      },
+      "description": "Generic fake admin portal for common /admin/login probes",
+      "created_at": 0
+    },
+    {
+      "id": "joomla_admin_fake",
+      "matches_pattern_id": "joomla_administrator_probe",
+      "intensity": "moderate",
+      "http_status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "body_template": "<!doctype html>\n<html><head><title>Administrator</title></head><body><div id=\"system-message-container\"></div><main><h1>Joomla Administrator Login</h1><form method=\"post\" action=\"/administrator/index.php\"><input type=\"hidden\" name=\"option\" value=\"com_login\"><input type=\"hidden\" name=\"task\" value=\"login\"><input type=\"hidden\" name=\"return\" value=\"{{return_id}}\"><label>Username <input name=\"username\"></label><label>Password <input type=\"password\" name=\"passwd\"></label><button type=\"submit\">Log in</button></form></main></body></html>\n",
+      "body_template_vars": {
+        "return_id": "fake_id"
+      },
+      "description": "Fake Joomla administrator login shell with inert form targets",
+      "created_at": 0
+    },
+    {
+      "id": "phpmyadmin_fake_login",
+      "matches_pattern_id": "phpmyadmin_probe",
+      "intensity": "moderate",
+      "http_status": 200,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Set-Cookie": "pma_lang=en; path=/; HttpOnly; SameSite=Lax"
+      },
+      "body_template": "<!doctype html>\n<html><head><title>phpMyAdmin</title></head><body><div id=\"page_content\"><h1>phpMyAdmin</h1><form method=\"post\" action=\"/phpmyadmin/index.php\"><input type=\"hidden\" name=\"token\" value=\"{{login_id}}\"><label>Username <input name=\"pma_username\"></label><label>Password <input type=\"password\" name=\"pma_password\"></label><button type=\"submit\">Go</button></form><p>Server: localhost</p></div></body></html>\n",
+      "body_template_vars": {
+        "login_id": "fake_id"
+      },
+      "description": "Fake phpMyAdmin login page that gives scanners a plausible dead end",
+      "created_at": 0
+    },
+    {
+      "id": "basic_auth_fake_realm",
+      "matches_pattern_id": "basic_auth_probe",
+      "intensity": "minimal",
+      "http_status": 401,
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8",
+        "WWW-Authenticate": "Basic realm=\"Net Ward Maintenance {{realm_id}}\""
+      },
+      "body_template": "Authentication required. Request {{request_id}} logged at {{timestamp}}.\n",
+      "body_template_vars": {
+        "realm_id": "fake_id",
+        "request_id": "uuid",
+        "timestamp": "timestamp"
+      },
+      "description": "Realistic 401 for Basic authorization brute-force probes",
+      "created_at": 0
+    }
+  ],
+  "patterns": [
+    {
+      "id": "env_file_probe",
+      "kind": "path",
+      "signature": "^/(\\.env|app/\\.env|config/\\.env)(\\.|$)",
+      "description": "Environment file fishing — .env exposure attempt",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "env_fake_blank",
+      "confidence": 0.95,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "git_config_probe",
+      "kind": "path",
+      "signature": "^/\\.git/(config|HEAD|index)$",
+      "description": "Git directory exposure probe",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "git_config_fake",
+      "confidence": 0.95,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "aws_credentials_probe",
+      "kind": "path",
+      "signature": "^/(\\.aws/credentials|\\.aws/config|aws\\.config|credentials\\.json)$",
+      "description": "AWS credentials file fishing",
+      "severity": "critical",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "aws_credentials_fake",
+      "confidence": 0.95,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "shell_uploader_probe",
+      "kind": "path",
+      "signature": "^/(shell|c99|c100|r57|webshell|wso|alfa|b374k|by\\.php|cmd|backdoor)\\.php$",
+      "description": "PHP shell uploader probe (c99/r57/wso/alfa family)",
+      "severity": "critical",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "shell_uploader_404_lookalike",
+      "confidence": 0.98,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "scanner_ua_probe",
+      "kind": "header",
+      "signature": "(?i)\\b(sqlmap|nikto|nuclei|masscan|zgrab|gobuster|dirbuster|wfuzz|wpscan|hydra|nmap)\\b",
+      "description": "Known scanner User-Agent fingerprint",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "scanner_ua_redirect",
+      "confidence": 0.9,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "wordpress_admin_probe",
+      "kind": "path",
+      "signature": "^/(wp-admin/?|wp-login\\.php)(\\?.*)?$",
+      "description": "WordPress admin/login probe",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "wordpress_admin_fake_login",
+      "confidence": 0.95,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "wordpress_xmlrpc_probe",
+      "kind": "path",
+      "signature": "^/xmlrpc\\.php(\\?.*)?$",
+      "description": "WordPress XML-RPC probe",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "wordpress_xmlrpc_fake_method_response",
+      "confidence": 0.95,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "generic_admin_login_probe",
+      "kind": "path",
+      "signature": "^/(admin/login|admin|login/admin)(/?|\\?.*)$",
+      "description": "Generic admin portal login probe",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "generic_admin_portal_fake",
+      "confidence": 0.9,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "joomla_administrator_probe",
+      "kind": "path",
+      "signature": "^/administrator(/index\\.php)?(/?|\\?.*)$",
+      "description": "Joomla administrator probe",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "joomla_admin_fake",
+      "confidence": 0.92,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "phpmyadmin_probe",
+      "kind": "path",
+      "signature": "^/(phpmyadmin|phpMyAdmin|pma|mysqladmin)(/|\\?.*)?$",
+      "description": "phpMyAdmin discovery probe",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "phpmyadmin_fake_login",
+      "confidence": 0.93,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "basic_auth_probe",
+      "kind": "header",
+      "signature": "(?i)^Basic\\s+[A-Za-z0-9+/=]{8,}$",
+      "description": "Basic authorization brute-force probe",
+      "severity": "warn",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "basic_auth_fake_realm",
+      "confidence": 0.85,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    }
+  ]
+}

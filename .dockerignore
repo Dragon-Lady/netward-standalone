@@ -1,0 +1,20 @@
+# Net Ward .dockerignore
+# Build context: standalone project root (docker build .)
+# Excludes test artifacts and runtime state; data/ is INCLUDED.
+
+netward/__pycache__/
+netward/**/__pycache__/
+netward/*.pyc
+netward/*.pyo
+netward/*.db
+netward/*.db-shm
+netward/*.db-wal
+netward/pytest_tmp*/
+netward/test_*.py
+netward/.pytest_cache/
+netward/*.egg-info/
+netward/.coverage
+netward/htmlcov/
+build/
+dist/
+*.egg-info/
