@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netward"
+version = "0.4.0"
+description = "Passive deception layer for HTTP/network services"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Net Ward authors" }]
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.9",
+    "pynacl>=1.5",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Security",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-anyio",
+    "pytest-asyncio",
+    "pytest-timeout",
+]
+
+[project.scripts]
+netward = "netward.__main__:main"
+netward-cli = "netward.cli:main"
+
+# Package data ensures data/vendor_patterns.json ships in the wheel so
+# first-run auto-seed works without any external download.
+[tool.setuptools]
+packages = ["netward"]
+
+[tool.setuptools.package-data]
+"netward" = ["data/*.json"]
+
+[tool.pytest.ini_options]
+# Build artifacts (`build/`, `dist/`, `*.egg-info/`) contain duplicate copies
+# of source files; collecting them would double-run every test.
+norecursedirs = ["build", "dist", "*.egg-info", ".pytest_cache", "__pycache__"]

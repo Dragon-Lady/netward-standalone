@@ -1,0 +1,9 @@
+# Net Ward runtime dependencies
+
+# Async HTTP server + client for the reverse-proxy capture layer
+aiohttp>=3.9
+
+# ed25519 signing/verification — reserved for the mesh layer (targeted v0.5).
+# Net Ward v0.4 ships single-node only and does not exercise pynacl;
+# kept here so future mesh activation does not require a dep change.
+pynacl>=1.5
