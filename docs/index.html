@@ -18,7 +18,7 @@
       <a href="#proof">Proof</a>
       <a href="#limits">Limits</a>
       <a href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor</a>
-      <a class="nav-cta" href="https://github.com/Dragon-Lady/netward-standalone-" target="_blank" rel="noreferrer">GitHub</a>
+      <a class="nav-cta" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub</a>
     </nav>
   </header>
 
@@ -34,7 +34,7 @@
           without a cloud account, kernel hooks, or retaliation.
         </p>
         <div class="hero-actions">
-          <a class="button primary" href="https://github.com/Dragon-Lady/netward-standalone-" target="_blank" rel="noreferrer">View on GitHub</a>
+          <a class="button primary" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">View on GitHub</a>
           <a class="button secondary" href="#quickstart">Install locally</a>
           <a class="button ghost" href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor development</a>
         </div>
@@ -139,22 +139,42 @@
 python -m netward --config example_config.json</code></pre>
     </section>
 
-    <section class="section split reverse" id="proof">
+    <section class="section proof" id="proof">
       <div>
-        <p class="section-kicker">Release posture</p>
-        <h2>Security-reviewed before public release.</h2>
+        <p class="section-kicker">Proof</p>
+        <h2>Reviewed, patched, and tagged before release.</h2>
         <p>
-          The v0.4.1 release followed an internal pre-launch security review covering
-          network fingerprinting, detection logic, install path, supply chain, and runtime
-          resource behavior. Three critical findings were identified and closed before release.
+          Net Ward v0.4.1 shipped only after an internal pre-launch security review
+          found and closed the launch-blocking issues. The public release includes the
+          patch notes, known limitations, and operator guidance instead of asking users
+          to trust a vague claim.
         </p>
+        <div class="proof-actions">
+          <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/SECURITY.md" target="_blank" rel="noreferrer">Read the security policy</a>
+          <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Read the changelog</a>
+        </div>
       </div>
-      <div class="audit-list" aria-label="Review scope">
-        <span>Fingerprinting pass</span>
-        <span>Detection logic review</span>
-        <span>Install path cleanup</span>
-        <span>Supply-chain sweep</span>
-        <span>Runtime load gate</span>
+      <div class="proof-panel" aria-label="Release evidence">
+        <article>
+          <span>Release tag</span>
+          <strong>v0.4.1</strong>
+          <p>Published from commit <code>a14414f</code> after the security patch.</p>
+        </article>
+        <article>
+          <span>Test gate</span>
+          <strong>318 passed</strong>
+          <p>Full local suite was green before launch.</p>
+        </article>
+        <article>
+          <span>Criticals</span>
+          <strong>3 closed</strong>
+          <p>Basic Auth loop, flood self-denial, and 502 deception oracle were fixed.</p>
+        </article>
+        <article>
+          <span>Scope</span>
+          <strong>5 lanes</strong>
+          <p>Fingerprinting, detection, install path, supply chain, and runtime load.</p>
+        </article>
       </div>
     </section>
 
@@ -168,7 +188,7 @@ python -m netward --config example_config.json</code></pre>
           Windows DB ACL enforcement is deferred, and coordinated low-rate multi-source floods are v0.5 work.
         </p>
       </div>
-      <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone-/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Read the changelog</a>
+      <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Read the changelog</a>
     </section>
 
     <section class="section support" aria-labelledby="support-title">
@@ -206,7 +226,7 @@ python -m netward --config example_config.json</code></pre>
     <section class="final-cta">
       <p class="section-kicker">Ready to inspect it?</p>
       <h2>Start with the code.</h2>
-      <a class="button primary" href="https://github.com/Dragon-Lady/netward-standalone-" target="_blank" rel="noreferrer">Open the repository</a>
+      <a class="button primary" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">Open the repository</a>
     </section>
   </main>
 
@@ -214,7 +234,7 @@ python -m netward --config example_config.json</code></pre>
     <span>Net Ward v0.4.1</span>
     <span>Apache 2.0</span>
     <a href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor</a>
-    <a href="https://github.com/Dragon-Lady/netward-standalone-" target="_blank" rel="noreferrer">GitHub</a>
+    <a href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub</a>
   </footer>
 </body>
 </html>
