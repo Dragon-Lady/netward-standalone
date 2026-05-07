@@ -415,7 +415,7 @@ h3 {
 }
 
 .flow-panel,
-.audit-list,
+.proof-panel,
 .quickstart pre {
   border: 1px solid var(--line);
   background: var(--panel);
@@ -506,19 +506,59 @@ code {
   background: #111815;
 }
 
-.audit-list {
+.proof {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 0.82fr) minmax(340px, 1.18fr);
+  gap: 58px;
+  align-items: center;
 }
 
-.audit-list span {
-  padding: 18px 22px;
+.proof-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.proof-panel {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.proof-panel article {
+  min-height: 190px;
+  padding: 24px;
+  border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  font-weight: 760;
 }
 
-.audit-list span:last-child {
+.proof-panel article:nth-child(2n) {
+  border-right: 0;
+}
+
+.proof-panel article:nth-last-child(-n + 2) {
   border-bottom: 0;
+}
+
+.proof-panel span {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--amber);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.proof-panel strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: clamp(28px, 4.2vw, 48px);
+  line-height: 1;
+}
+
+.proof-panel p {
+  margin: 0;
+  font-size: 15px;
 }
 
 .limits {
@@ -640,6 +680,7 @@ details p {
   }
 
   .hero,
+  .proof,
   .split,
   .split.reverse,
   .quickstart {
@@ -700,12 +741,30 @@ details p {
   }
 
   .hero-actions,
+  .proof-actions,
+  .proof-actions .button,
   .button {
     width: 100%;
   }
 
   .feature-grid {
     grid-template-columns: 1fr;
+  }
+
+  .proof-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .proof-panel article,
+  .proof-panel article:nth-child(2n),
+  .proof-panel article:nth-last-child(-n + 2) {
+    min-height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .proof-panel article:last-child {
+    border-bottom: 0;
   }
 
   .traffic-map {
