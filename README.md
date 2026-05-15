@@ -62,7 +62,7 @@ On Linux/macOS, keep `storage_path` non-world-writable. Example: `chmod 600 netw
 
 ### Resource Monitoring
 
-Net Ward sustains its documented per-box capacity continuously, but Python runtime memory pools may retain working-set state after sustained heavy load. Operators running Net Ward under continuous heavy traffic should monitor process resource usage and restart the daemon periodically, for example weekly or when RSS exceeds 2x baseline. v0.5 will refine this guidance based on production telemetry.
+Net Ward sustains its documented per-box capacity continuously, but Python runtime memory pools may retain working-set state after sustained heavy load. Operators running Net Ward under continuous heavy traffic should monitor process resource usage and restart the daemon periodically, for example weekly or when RSS exceeds 2x baseline. v0.5 will refine this guidance based on operator feedback and local test observations, not automatic telemetry.
 
 ---
 
@@ -166,6 +166,27 @@ Net Ward is fail-open and user-space only:
 - If classification, storage, or mirror rendering fails, traffic passes to upstream
 
 The mirror layer is meant to deflect automated abuse, not attack it back.
+
+---
+
+## Privacy and Local Data Use
+
+Net Ward does not send telemetry to the project maintainers and does not use
+operator traffic for any external purpose.
+
+Because Net Ward is a live reverse proxy, it keeps operator-owned local records
+needed to detect and deflect DDoS, probe, and bot activity. Those records may
+include source IPs, timestamps, request paths, selected headers, query strings,
+request sizes, short request-body snippets, classifications, pattern matches,
+and alert metadata in the configured local SQLite database.
+
+That data stays under the operator's control. It is not uploaded, sold, shared,
+or used by the Net Ward project. Its purpose is limited to local attack-point
+detection, abuse-pattern review, alerting, and improving the operator's own
+deflection rules.
+
+Do not send real credentials, private customer data, or full traffic captures in
+public issues or support requests. Share sanitized examples only.
 
 ---
 
