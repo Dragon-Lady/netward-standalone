@@ -117,7 +117,7 @@
       </article>
       <article>
         <h3>Safe deception</h3>
-        <p>Mirror responses are normal HTTP responses. No malware, no retaliation, no collection of submitted secrets.</p>
+        <p>Mirror responses are normal HTTP responses. No malware, no retaliation, no maintainer telemetry.</p>
       </article>
       <article>
         <h3>Operator patterns</h3>
@@ -216,6 +216,10 @@ python -m netward --config example_config.json</code></pre>
       <details>
         <summary>What happens if Net Ward fails?</summary>
         <p>The design goal is fail open: classification, storage, or mirror failures should pass traffic to upstream.</p>
+      </details>
+      <details>
+        <summary>Does Net Ward collect my traffic?</summary>
+        <p>No traffic is sent to the project maintainers. Operators own their local SQLite records, which are used only for local DDoS, probe, and bot-deflection decisions.</p>
       </details>
       <details>
         <summary>Who is it for right now?</summary>
