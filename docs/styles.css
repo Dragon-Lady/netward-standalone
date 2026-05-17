@@ -106,6 +106,20 @@ a {
     repeating-linear-gradient(135deg, rgba(18, 18, 18, 0.08) 0, rgba(18, 18, 18, 0.08) 16px, transparent 16px, transparent 32px);
 }
 
+.support-hero {
+  padding: 86px 6vw 66px;
+  background:
+    linear-gradient(112deg, rgba(255, 210, 49, 0.94) 0%, rgba(255, 210, 49, 0.88) 58%, rgba(18, 18, 18, 0.93) 58.2%, rgba(18, 18, 18, 0.93) 100%);
+}
+
+.support-hero h1 {
+  max-width: 920px;
+}
+
+.support-hero .hero-text {
+  max-width: 820px;
+}
+
 .hero::before {
   content: "";
   position: absolute;
@@ -475,9 +489,22 @@ h3 {
   background: var(--panel);
 }
 
+.support-grid {
+  padding-top: 1px;
+}
+
 .feature-grid p {
   margin: 0;
   font-size: 15px;
+}
+
+.text-link {
+  display: inline-flex;
+  margin-top: 18px;
+  color: var(--cyan);
+  font-weight: 780;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .quickstart {
@@ -730,6 +757,7 @@ details p {
   }
 
   .hero,
+  .support-hero,
   .section,
   .final-cta {
     padding-left: 20px;

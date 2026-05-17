@@ -9,6 +9,7 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+uv.lock
 
 *.db
 *.db-shm
@@ -23,6 +24,8 @@ netward.log
 
 # Internal red-team artifacts (not for public release)
 LAUNCH_HOLD_*.md
+NETWARD_*_BRIEFING_*.md
+POST_LAUNCH_*.md
 V0_4_1_*.md
 RED_TEAM_*.md
 tools/red_team/results*/
