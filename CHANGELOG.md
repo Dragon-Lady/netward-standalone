@@ -5,6 +5,11 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+### Documentation
+
+- Added a README happy-path example, known-limitations roadmap note, and
+  changelog link from the version footer.
+
 ## [0.4.1] - 2026-05-07
 
 ### Security

@@ -1,17 +1,38 @@
 # Net Ward
-**User-space DDoS and bot deflection for small teams.**
 
-Net Ward runs in front of an HTTP service as a reverse proxy. Normal traffic passes through. Known probe and abuse patterns receive harmless mirror responses that waste bot effort without damaging the client, the protected application, or the host system.
+**A user-space deception layer that turns DDoS and bot abuse into wasted effort.**
+
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](CHANGELOG.md)
+
+Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic passes through untouched. Known probes and floods get harmless **mirror responses** that burn bot effort and never reach your app — no kernel hooks, no payloads, no retaliation, **fail-open by design**.
+
+### Why Net Ward
+
+- **Deflects, doesn't fight back.** Bots waste time on convincing-but-harmless mirrors; your upstream never sees the request.
+- **User-space and fail-open.** No kernel modules, no packet tampering. If classification or rendering ever fails, traffic passes straight through to upstream.
+- **Drops in anywhere.** One Python process in front of any HTTP service. Point your load balancer at it and go.
+- **Honest by design.** No telemetry, no harvested credentials, operator owns every byte of local data. Apache-2.0.
+
+> **Built and maintained by Dragon Lady** — [github.com/Dragon-Lady](https://github.com/Dragon-Lady) · X: [@answerislove2](https://x.com/answerislove2)
+> Independent security researcher tracking live supply-chain and bot-abuse campaigns in the wild.
 
 ---
 
 ## Quick Start
 
-From the repo root:
+```bash
+pip install netward
+python -m netward --config example_config.json
+```
+
+Or from source:
 
 ```bash
+git clone https://github.com/Dragon-Lady/netward-standalone
+cd netward-standalone
 pip install -e .
-python -m netward --config example_config.json
 ```
 
 Net Ward listens on `listen_address` and forwards clean traffic to `upstream_target`.
@@ -81,6 +102,19 @@ curl -i http://127.0.0.1:8080/wp-admin/
 ```
 
 The WordPress probe returns a fake login page. The upstream service does not receive the request.
+
+### Happy-path example
+
+With the example topology above, a healthy first run should look like this:
+
+1. Start a small upstream service on `127.0.0.1:9000`.
+2. Start Net Ward on `127.0.0.1:8080`.
+3. Request `/` through Net Ward and confirm the upstream response comes back.
+4. Request `/wp-admin/` through Net Ward and confirm a mirror response comes back instead.
+
+Expected result: normal traffic reaches the upstream app, while the known probe
+is handled by Net Ward's mirror layer. This is the simplest signal that the
+proxy path, pattern match, and mirror response are all working.
 
 ---
 
@@ -190,6 +224,21 @@ public issues or support requests. Share sanitized examples only.
 
 ---
 
+## Known Limitations and Roadmap
+
+- v0.4.1 logs alerts to stdout only. External alert delivery is reserved for a
+  later release.
+- Some pattern kinds are intentionally conservative or deferred. Net Ward favors
+  fail-open behavior over blocking uncertain traffic.
+- Mirror responses are only as complete as the installed response set. Operators
+  should treat them as deflection surfaces, not a full deception platform.
+- Resource monitoring guidance is based on local testing and operator review, not
+  automatic telemetry.
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes and planned refinements.
+
+---
+
 ## Files
 
 | File | Purpose |
@@ -205,4 +254,4 @@ public issues or support requests. Share sanitized examples only.
 
 ---
 
-*Net Ward v0.4.1*
+*[Net Ward v0.4.1](CHANGELOG.md)*

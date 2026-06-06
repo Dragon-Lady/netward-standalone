@@ -5,10 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "netward"
 version = "0.4.1"
-description = "Passive deception layer for HTTP/network services"
+description = "A user-space deception layer that turns DDoS and bot abuse into wasted effort"
 readme = "README.md"
 license = { file = "LICENSE" }
-authors = [{ name = "Net Ward authors" }]
+authors = [{ name = "Dragon Lady" }]
+keywords = ["security", "ddos", "bot-mitigation", "deception", "reverse-proxy", "honeypot", "waf"]
 requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.9",
@@ -26,6 +27,11 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "Operating System :: OS Independent",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Dragon-Lady/netward-standalone"
+Repository = "https://github.com/Dragon-Lady/netward-standalone"
+Issues = "https://github.com/Dragon-Lady/netward-standalone/issues"
 
 [project.optional-dependencies]
 dev = [
