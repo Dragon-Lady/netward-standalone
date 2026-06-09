@@ -266,6 +266,15 @@ def test_path_patterns_do_not_match_legit_traffic(patterns, legit_path):
     ("env_file_probe", "/.envrc"),
     ("env_file_probe", "/config/settings/.env_backup"),
     ("env_file_probe", "/app/releases/current/.env_local"),
+    ("brickstorm_pfsense_ipsec_blacklist_probe", "/usr/local/libexec/ipsec/blacklist"),
+    ("verdantbamboo_appliance_implant_probe", "/usr/sbin/luserput"),
+    ("verdantbamboo_appliance_implant_probe", "/usr/sbin/ovs-dbctl"),
+    ("verdantbamboo_appliance_implant_probe", "/usr/local/bin/egnyte/egnyte_host_monitor_client"),
+    ("verdantbamboo_appliance_implant_probe", "/home/egnyteservice/ssync.sh"),
+    ("appliance_cron_persistence_probe", "/etc/crontab"),
+    ("appliance_cron_persistence_probe", "/etc/cron.d/ssync"),
+    ("appliance_cron_persistence_probe", "/etc/cron.d/brickstorm"),
+    ("appliance_cron_persistence_probe", "/etc/cron.d/agentpsd-fallback"),
 ])
 def test_vendor_path_patterns_cover_expected_probe_variants(patterns, pattern_id, probe_path):
     pattern = next(p for p in patterns if p["id"] == pattern_id)

@@ -367,6 +367,57 @@
       "parent_pattern_id": null,
       "mutation_generation": 0,
       "expires_at": 1
+    },
+    {
+      "id": "brickstorm_pfsense_ipsec_blacklist_probe",
+      "kind": "path",
+      "signature": "^/usr/local/libexec/ipsec/blacklist$",
+      "description": "VerdantBamboo BRICKSTORM FreeBSD/pfSense implant path reported by Volexity",
+      "severity": "critical",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "shell_uploader_404_lookalike",
+      "confidence": 0.98,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "verdantbamboo_appliance_implant_probe",
+      "kind": "path",
+      "signature": "^/(?:usr/sbin/(?:luserput|ovs-dbctl)|usr/local/bin/egnyte/egnyte_host_monitor_client|home/egnyteservice/ssync\\.sh)$",
+      "description": "VerdantBamboo appliance implant and fallback names: BRICKSTORM, PLENET, AGENTPSD, ssync launcher",
+      "severity": "critical",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "shell_uploader_404_lookalike",
+      "confidence": 0.94,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
+      "id": "appliance_cron_persistence_probe",
+      "kind": "path",
+      "signature": "^/etc/(?:crontab|cron\\.d/(?:ssync|[^/?#]*(?:brickstorm|agentpsd|plenet|egnyte)[^/?#]*))$",
+      "description": "Appliance cron persistence probe paths associated with BRICKSTORM/AGENTPSD-style appliance access",
+      "severity": "critical",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "shell_uploader_404_lookalike",
+      "confidence": 0.9,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
     }
   ]
 }
