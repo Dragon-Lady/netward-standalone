@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netward"
-version = "0.4.1"
+version = "0.4.2"
 description = "A user-space deception layer that turns DDoS and bot abuse into wasted effort"
 readme = "README.md"
 license = { file = "LICENSE" }

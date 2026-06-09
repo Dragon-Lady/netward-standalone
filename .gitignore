@@ -17,6 +17,7 @@ uv.lock
 pytest_tmp*/
 
 .venv/
+.release-venv/
 venv/
 env/
 

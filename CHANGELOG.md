@@ -10,6 +10,16 @@ Format follows Keep a Changelog. Versioning is semver.
 - Added a README happy-path example, known-limitations roadmap note, and
   changelog link from the version footer.
 
+## [0.4.2] - 2026-06-09
+
+### Security
+
+- Added VerdantBamboo / BRICKSTORM appliance probe patterns for reported
+  pfSense, Egnyte Storage Sync, Linux appliance implant, and cron persistence
+  paths. These vendor patterns help operators mirror and log targeted probes
+  for appliance malware paths used in BRICKSTORM, PLENET, and AGENTPSD-style
+  activity.
+
 ## [0.4.1] - 2026-05-07
 
 ### Security
