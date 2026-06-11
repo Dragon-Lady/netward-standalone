@@ -275,6 +275,8 @@ def test_path_patterns_do_not_match_legit_traffic(patterns, legit_path):
     ("appliance_cron_persistence_probe", "/etc/cron.d/ssync"),
     ("appliance_cron_persistence_probe", "/etc/cron.d/brickstorm"),
     ("appliance_cron_persistence_probe", "/etc/cron.d/agentpsd-fallback"),
+    ("ivanti_sentry_mics_config_probe", "/mics/api/v2/sentry/mics-config/handleMessage"),
+    ("ivanti_sentry_mics_config_probe", "/mics/api/v2/sentry/mics-config/handleMessage?probe=1"),
 ])
 def test_vendor_path_patterns_cover_expected_probe_variants(patterns, pattern_id, probe_path):
     pattern = next(p for p in patterns if p["id"] == pattern_id)

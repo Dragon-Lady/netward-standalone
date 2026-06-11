@@ -418,6 +418,23 @@
       "parent_pattern_id": null,
       "mutation_generation": 0,
       "expires_at": null
+    },
+    {
+      "id": "ivanti_sentry_mics_config_probe",
+      "kind": "path",
+      "signature": "^/mics/api/v2/sentry/mics-config/handlemessage(?:\\?.*)?$",
+      "description": "Ivanti Sentry MICS config endpoint probe associated with CVE-2026-10520 and CVE-2026-10523 scanning",
+      "severity": "critical",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "shell_uploader_404_lookalike",
+      "confidence": 0.96,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
     }
   ]
 }
