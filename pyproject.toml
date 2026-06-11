@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netward"
-version = "0.4.2"
+version = "0.4.3"
 description = "A user-space deception layer that turns DDoS and bot abuse into wasted effort"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -35,10 +35,10 @@ Issues = "https://github.com/Dragon-Lady/netward-standalone/issues"
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "pytest-anyio",
-    "pytest-asyncio",
-    "pytest-timeout",
+    "pytest>=8,<10",
+    "pytest-anyio>=0.0.0,<1",
+    "pytest-asyncio>=0.24,<2",
+    "pytest-timeout>=2.3,<3",
 ]
 
 [project.scripts]

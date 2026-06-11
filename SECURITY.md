@@ -43,11 +43,14 @@ the same vulnerability simultaneously.
 
 To report a vulnerability, contact the security team privately:
 
-- **Email:** `security@netward.example` *(operator: replace with your
-  organization's intake address before public release)*
+- **Preferred:** Use GitHub private vulnerability reporting for the
+  `Dragon-Lady/netward-standalone` repository.
+- **Fallback:** If private reporting is unavailable, open a public issue that
+  asks for a private security contact without including exploit details,
+  credentials, PII, or a working reproduction.
 - **Subject line:** `[NETWARD SECURITY] <short description>`
 - **Encryption:** PGP key forthcoming; for now, summarize the issue
-  without including a working exploit in the email body. We will reply
+  without including a working exploit in the initial report. We will reply
   with a secure channel for follow-up.
 
 ### What to include
