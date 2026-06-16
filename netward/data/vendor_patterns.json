@@ -420,6 +420,23 @@
       "expires_at": null
     },
     {
+      "id": "cisco_sdwan_manager_api_probe",
+      "kind": "path",
+      "signature": "^/(?:dataservice(?:/(?:client/token|system/device/controllers|software/package/(?:image|fileupload)|admin/user|template/device|device/action/install/devices/vmanage))?|j_security_check)(?:[/\\?#].*)?$",
+      "description": "Cisco Catalyst SD-WAN Manager/vManage management API or auth-surface probe associated with CVE-2026-20262 and related 2026 SD-WAN exploitation",
+      "severity": "critical",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "shell_uploader_404_lookalike",
+      "confidence": 0.88,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
       "id": "ivanti_sentry_mics_config_probe",
       "kind": "path",
       "signature": "^/mics/api/v2/sentry/mics-config/handlemessage(?:\\?.*)?$",

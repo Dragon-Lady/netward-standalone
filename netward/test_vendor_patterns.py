@@ -275,6 +275,11 @@ def test_path_patterns_do_not_match_legit_traffic(patterns, legit_path):
     ("appliance_cron_persistence_probe", "/etc/cron.d/ssync"),
     ("appliance_cron_persistence_probe", "/etc/cron.d/brickstorm"),
     ("appliance_cron_persistence_probe", "/etc/cron.d/agentpsd-fallback"),
+    ("cisco_sdwan_manager_api_probe", "/dataservice"),
+    ("cisco_sdwan_manager_api_probe", "/dataservice/client/token"),
+    ("cisco_sdwan_manager_api_probe", "/dataservice/software/package/image"),
+    ("cisco_sdwan_manager_api_probe", "/dataservice/software/package/fileupload?filename=test"),
+    ("cisco_sdwan_manager_api_probe", "/j_security_check"),
     ("ivanti_sentry_mics_config_probe", "/mics/api/v2/sentry/mics-config/handleMessage"),
     ("ivanti_sentry_mics_config_probe", "/mics/api/v2/sentry/mics-config/handleMessage?probe=1"),
 ])

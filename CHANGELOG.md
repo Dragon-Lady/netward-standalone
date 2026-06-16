@@ -5,6 +5,16 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-06-16
+
+### Security
+
+- Added a Cisco Catalyst SD-WAN Manager / vManage management API probe pattern
+  for `dataservice` and auth/upload-adjacent paths associated with
+  `CVE-2026-20262` and related June 2026 SD-WAN Manager exploitation.
+
+## [0.4.3] - 2026-06-11
+
 ### Documentation
 
 - Added a README happy-path example, known-limitations roadmap note, and
