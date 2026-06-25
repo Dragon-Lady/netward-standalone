@@ -437,6 +437,23 @@
       "expires_at": null
     },
     {
+      "id": "ubiquiti_unifi_os_update_probe",
+      "kind": "path",
+      "signature": "^/(?:api/auth/validate-sso|ucs/update/latest_package)(?:[/\\?#].*)?$",
+      "description": "Ubiquiti UniFi OS management auth/update probe paths associated with CVE-2026-34908, CVE-2026-34909, and CVE-2026-34910 exploitation",
+      "severity": "critical",
+      "origin": "vendor",
+      "origin_node_id": null,
+      "created_at": 0,
+      "last_matched": null,
+      "match_count": 0,
+      "mirror_response_id": "shell_uploader_404_lookalike",
+      "confidence": 0.88,
+      "parent_pattern_id": null,
+      "mutation_generation": 0,
+      "expires_at": null
+    },
+    {
       "id": "ivanti_sentry_mics_config_probe",
       "kind": "path",
       "signature": "^/mics/api/v2/sentry/mics-config/handlemessage(?:\\?.*)?$",

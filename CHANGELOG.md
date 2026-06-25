@@ -5,6 +5,14 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-06-24
+
+### Security
+
+- Added a Ubiquiti UniFi OS management auth/update probe pattern for
+  `/api/auth/validate-sso/` and `/ucs/update/latest_package` paths associated
+  with `CVE-2026-34908`, `CVE-2026-34909`, and `CVE-2026-34910`.
+
 ## [0.4.4] - 2026-06-16
 
 ### Security
