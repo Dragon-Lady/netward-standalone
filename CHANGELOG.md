@@ -5,6 +5,13 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-06-24
+
+### Changed
+
+- Scrubbed standalone package wording and shipped tests to remove internal
+  product/team references while preserving buyer-hygiene checks.
+
 ## [0.4.5] - 2026-06-24
 
 ### Security

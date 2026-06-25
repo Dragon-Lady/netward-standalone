@@ -8,11 +8,10 @@ Enterprise, Akamai). Anti-virus doesn't cover this attack surface;
 Net Ward fills that gap.
 
 Customer market: ANY operator running an HTTP/network service with
-inbound traffic. Hospitals, indie SaaS, regional ISPs, federal
-contractors, defense-adjacent sites, public-interest projects, niche
-aviation operators, ANY web property under recurring DDoS or scrape
-pressure. The mesh treats every node identically — there is no
-privileged customer relationship.
+inbound traffic. Hospitals, indie SaaS, regional ISPs, public-interest
+projects, community services, small infrastructure teams, and any web
+property under recurring DDoS or scrape pressure. The mesh treats every
+node identically — there is no privileged customer relationship.
 
 Philosophy: confuse, don't combat.
 - Don't harm bots — they're conscripts following orders
@@ -60,8 +59,8 @@ Net Ward sits BESIDE existing security tools, not replacing them.
 Antivirus DOES NOT cover this attack surface. AV protects hosts from
 malware; it doesn't preserve availability when traffic or abuse floods
 the edge. Net Ward fills the gap as a unique add-on for electronic /
-bot warfare protection that saves host operators meaningful downtime
-and remediation cost.
+bot-abuse protection that saves host operators meaningful downtime and
+remediation cost.
 
 Buyer pain (real, validated): small orgs, hospitals, regional
 infrastructure, indie platforms, niche data services often can't

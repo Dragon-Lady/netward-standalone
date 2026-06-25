@@ -444,8 +444,8 @@ def test_flood_source_on_pass_through_path_reaches_upstream(storage):
     """Core B1 test: a source that has hit the flood threshold must still reach
     the upstream when it requests a non-probe-shaped path.
 
-    This is the scenario that failed in Oracle's loadgen run (v0.4): 5,999 of
-    6,000 requests to / returned the default mirror instead of upstream content.
+    This is the regression scenario from the v0.4 load test: 5,999 of 6,000
+    requests to / returned the default mirror instead of upstream content.
     """
     storage.patterns_upsert(_make_pattern(r"^/probe-target"))
 

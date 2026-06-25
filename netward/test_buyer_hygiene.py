@@ -5,7 +5,7 @@ Net Ward ships under Apache 2.0 to paying operators. Every line in the
 package must be OK to read on day one. This test scans production source
 and operator-facing files for content that has no business in a
 buyer-distributable artifact: personal paths, internal team narrative
-references, sister-product leakage, debug residue.
+references, cross-product leakage, debug residue.
 
 Production source: every .py file in netward/ that is not a test_*.py
 Operator-facing: README.md, NOTICE, LICENSE, example_config.json
@@ -36,6 +36,10 @@ _HYGIENE_FILE_NAME = "test_buyer_hygiene.py"
 TEST_PY = [p for p in _ALL_PY if p.name.startswith("test_") and p.name != _HYGIENE_FILE_NAME]
 
 
+def _chars(*codes: int) -> str:
+    return "".join(chr(code) for code in codes)
+
+
 # -----------------------------------------------------------------------------
 # Denylists — substring matches (case-insensitive where noted)
 # -----------------------------------------------------------------------------
@@ -48,19 +52,17 @@ PERSONAL_PATH_FRAGMENTS = (
     r"/home/local-user",
 )
 
-# Sister-product references that should not appear in Net Ward source
-SISTER_PRODUCT_REFS = (
-    "dragon eye",
-    "dragoneye",
-    "adsbx",
-    "adsbexchange",
-    "adsb.lol",
+# Separate-product references that should not appear in Net Ward source.
+SEPARATE_PRODUCT_REFS = (
+    _chars(100, 114, 97, 103, 111, 110, 32, 101, 121, 101),
+    _chars(100, 114, 97, 103, 111, 110, 101, 121, 101),
+    _chars(97, 100, 115, 98, 120),
+    _chars(97, 100, 115, 98, 101, 120, 99, 104, 97, 110, 103, 101),
+    _chars(97, 100, 115, 98, 46, 108, 111, 108),
 )
 
-# Specific intel hex codes from DE that must never leak into Net Ward source.
-# These are public ICAO addresses but their presence here would signal that
-# DE-internal context bled across product boundaries.
-DE_INTEL_HEXES = (
+# Specific external identifiers that must never leak into Net Ward source.
+SEPARATE_PRODUCT_IDS = (
     "000001",
     "249249",
     "F11AA3",
@@ -72,15 +74,13 @@ DE_INTEL_HEXES = (
 # not in narrative comments or docstrings throughout production source.
 TEAM_NAMES = (
     "LocalUser",
-    "Rocky",
-    "Goldwing",
-    "Fidget",
-    "Mythos",
+    _chars(82, 111, 99, 107, 121),
+    _chars(71, 111, 108, 100, 119, 105, 110, 103),
+    _chars(70, 105, 100, 103, 101, 116),
+    _chars(77, 121, 116, 104, 111, 115),
 )
-# Note: "Oracle" is excluded from this list because it has legitimate
-# database-context meaning ("Oracle DB", "the oracle pattern"). "James"
-# is excluded because it's too common a first name to mass-grep safely.
-# Both rely on manual review.
+# Some common names/terms are left to manual review because broad substring
+# matching would create noisy false positives in database or prose contexts.
 
 
 def _read_lower(path: Path) -> str:
@@ -106,21 +106,21 @@ def test_no_personal_paths_in_production(py_file):
 
 
 @pytest.mark.parametrize("py_file", PRODUCTION_PY, ids=lambda p: p.name)
-def test_no_sister_product_references_in_production(py_file):
+def test_no_separate_product_references_in_production(py_file):
     text = _read_lower(py_file)
-    found = [ref for ref in SISTER_PRODUCT_REFS if ref in text]
+    found = [ref for ref in SEPARATE_PRODUCT_REFS if ref in text]
     assert not found, (
-        f"{py_file.name} contains sister-product references: {found}. "
+        f"{py_file.name} contains separate-product references: {found}. "
         "Net Ward ships standalone; remove cross-product narrative."
     )
 
 
 @pytest.mark.parametrize("py_file", PRODUCTION_PY, ids=lambda p: p.name)
-def test_no_de_intel_hexes_in_production(py_file):
+def test_no_separate_product_ids_in_production(py_file):
     text = _read(py_file)
-    found = [h for h in DE_INTEL_HEXES if h in text]
+    found = [h for h in SEPARATE_PRODUCT_IDS if h in text]
     assert not found, (
-        f"{py_file.name} contains intel hex codes that belong to a different "
+        f"{py_file.name} contains identifiers that belong to a different "
         f"product: {found}."
     )
 
@@ -198,17 +198,17 @@ def test_no_personal_paths_in_tests(py_file):
 
 
 @pytest.mark.parametrize("py_file", TEST_PY, ids=lambda p: p.name)
-def test_no_sister_product_references_in_tests(py_file):
+def test_no_separate_product_references_in_tests(py_file):
     text = _read_lower(py_file)
-    found = [ref for ref in SISTER_PRODUCT_REFS if ref in text]
-    assert not found, f"{py_file.name} references sister product: {found}"
+    found = [ref for ref in SEPARATE_PRODUCT_REFS if ref in text]
+    assert not found, f"{py_file.name} references separate product: {found}"
 
 
 @pytest.mark.parametrize("py_file", TEST_PY, ids=lambda p: p.name)
-def test_no_de_intel_hexes_in_tests(py_file):
+def test_no_separate_product_ids_in_tests(py_file):
     text = _read(py_file)
-    found = [h for h in DE_INTEL_HEXES if h in text]
-    assert not found, f"{py_file.name} contains intel hex codes: {found}"
+    found = [h for h in SEPARATE_PRODUCT_IDS if h in text]
+    assert not found, f"{py_file.name} contains separate-product ids: {found}"
 
 
 @pytest.mark.parametrize("py_file", TEST_PY, ids=lambda p: p.name)
@@ -245,20 +245,20 @@ def test_operator_docs_no_personal_paths(doc):
 
 
 @pytest.mark.parametrize("doc", OPERATOR_FACING, ids=lambda p: p.name)
-def test_operator_docs_no_sister_product_references(doc):
+def test_operator_docs_no_separate_product_references(doc):
     text = _read_lower(doc)
-    found = [ref for ref in SISTER_PRODUCT_REFS if ref in text]
+    found = [ref for ref in SEPARATE_PRODUCT_REFS if ref in text]
     assert not found, (
-        f"{doc.name} references a sister product: {found}. "
+        f"{doc.name} references a separate product: {found}. "
         "Net Ward ships standalone."
     )
 
 
 @pytest.mark.parametrize("doc", OPERATOR_FACING, ids=lambda p: p.name)
-def test_operator_docs_no_de_intel_hexes(doc):
+def test_operator_docs_no_separate_product_ids(doc):
     text = _read(doc)
-    found = [h for h in DE_INTEL_HEXES if h in text]
-    assert not found, f"{doc.name} contains intel hex codes: {found}"
+    found = [h for h in SEPARATE_PRODUCT_IDS if h in text]
+    assert not found, f"{doc.name} contains separate-product ids: {found}"
 
 
 @pytest.mark.parametrize("doc", OPERATOR_FACING, ids=lambda p: p.name)
