@@ -1,0 +1,35 @@
+name: CI
+
+# Runs the full test suite — including the buyer-hygiene gate that blocks
+# cross-product leaks (e.g. sister-product references in public source) — on
+# every push and pull request. This is the fast-feedback layer; the publish
+# workflow runs the same gate again as a hard precondition for releasing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package with dev deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Buyer-hygiene gate (no cross-product leaks)
+        run: python -m pytest netward/test_buyer_hygiene.py -v
+      - name: Full test suite
+        run: python -m pytest -q
