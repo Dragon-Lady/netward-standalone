@@ -18,6 +18,8 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 > **Built and maintained by Dragon Lady** — [github.com/Dragon-Lady](https://github.com/Dragon-Lady) · X: [@answerislove2](https://x.com/answerislove2)
 > Independent security researcher tracking live supply-chain and bot-abuse campaigns in the wild.
 
+**Website:** [dragon-lady.github.io/netward-standalone](https://dragon-lady.github.io/netward-standalone/)
+
 ---
 
 ## Quick Start

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Net Ward">
+  <rect width="64" height="64" rx="4" fill="#0a1117"/>
+  <path d="M32 6 55 17v17c0 13-10 20-23 25C19 54 9 47 9 34V17L32 6Z" fill="#ffc857" stroke="#33d6c5" stroke-width="3"/>
+  <text x="32" y="39" fill="#0a1117" font-family="monospace" font-size="18" font-weight="700" text-anchor="middle">NW</text>
+</svg>
