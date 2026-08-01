@@ -3,245 +3,331 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Net Ward is a user-space reverse proxy that deters bots with safe deception responses.">
-  <title>Net Ward | User-space bot and DDoS deflection</title>
+  <meta name="theme-color" content="#0a1117">
+  <meta name="description" content="Net Ward is a local user-space reverse proxy that lets clean HTTP traffic through and sends known probes to harmless mirror responses.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://dragon-lady.github.io/netward-standalone/">
+  <meta property="og:title" content="Net Ward | Make bad traffic take the long way">
+  <meta property="og:description" content="Local bot and probe deflection for small HTTP services. User-space, fail-open, and built without retaliation.">
+  <meta property="og:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Net Ward routing clean traffic to an upstream service and known probes to a harmless mirror">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Net Ward | Local bot and probe deflection">
+  <meta name="twitter:description" content="Let clean traffic through. Send known abuse somewhere harmless.">
+  <meta name="twitter:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward.png">
+  <link rel="canonical" href="https://dragon-lady.github.io/netward-standalone/">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
+  <title>Net Ward | Make bad traffic take the long way</title>
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
   <header class="site-header">
     <a class="brand" href="#top" aria-label="Net Ward home">
       <span class="brand-mark" aria-hidden="true">NW</span>
       <span>Net Ward</span>
     </a>
-    <nav class="nav-links" aria-label="Primary">
+    <nav class="nav-links" aria-label="Primary navigation">
       <a href="#how">How it works</a>
+      <a href="#posture">Posture</a>
       <a href="#proof">Proof</a>
       <a href="#limits">Limits</a>
       <a href="support.html">Support</a>
-      <a href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor</a>
-      <a class="nav-cta" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub</a>
+      <a class="nav-cta" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
     </nav>
   </header>
 
-  <main id="top">
-    <section class="hero" aria-labelledby="hero-title">
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow">Open-source alpha - v0.4.1</p>
-        <h1 id="hero-title">Net Ward</h1>
-        <p class="hero-subtitle">Always-on bot deflection for small HTTP services.</p>
+        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> Open-source alpha · v0.4.6</p>
+        <h1 id="hero-title">Make bad traffic<br><span>take the long way.</span></h1>
+        <p class="hero-subtitle">A local deception layer for small HTTP services.</p>
         <p class="hero-text">
-          Put a local reverse proxy in front of your app. Clean traffic passes through.
-          Known probes and low-end abuse get harmless mirror responses that waste bot effort
-          without a cloud account, kernel hooks, or retaliation.
+          Net Ward sits in front of your app as a user-space reverse proxy. Clean requests
+          reach the real service. Known probes and low-end abuse receive harmless mirror
+          responses that waste automated effort—without a cloud contract, kernel hooks,
+          or retaliation.
         </p>
         <div class="hero-actions">
-          <a class="button primary" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">View on GitHub</a>
-          <a class="button secondary" href="#quickstart">Install locally</a>
-          <a class="button ghost" href="support.html">Support options</a>
+          <a class="button primary" href="#quickstart">Run it locally</a>
+          <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">Inspect the source</a>
         </div>
-        <div class="promise-row" aria-label="Key promises">
-          <span>Always on</span>
-          <span>Deception, not damage control</span>
-          <span>Pip install, no AWS required</span>
-        </div>
+        <ul class="promise-row" aria-label="Core posture">
+          <li>User-space</li>
+          <li>Fail-open design</li>
+          <li>No retaliation</li>
+          <li>No maintainer telemetry</li>
+        </ul>
       </div>
 
-      <div class="hero-visual" aria-hidden="true">
-        <div class="traffic-map">
-          <div class="lane lane-clean">
-            <span class="packet packet-a"></span>
-            <span class="packet packet-b"></span>
-            <span class="packet packet-c"></span>
-            <strong>clean traffic</strong>
+      <div class="hero-visual" aria-label="Diagram showing Net Ward routing clean traffic to an upstream and known probes to a mirror">
+        <div class="radar" aria-hidden="true">
+          <span class="radar-ring ring-one"></span>
+          <span class="radar-ring ring-two"></span>
+          <span class="radar-ring ring-three"></span>
+          <span class="radar-sweep"></span>
+          <span class="signal signal-clean-one"></span>
+          <span class="signal signal-clean-two"></span>
+          <span class="signal signal-probe-one"></span>
+          <span class="signal signal-probe-two"></span>
+        </div>
+        <div class="route-board" aria-hidden="true">
+          <div class="route-source">
+            <span>HTTP</span>
+            <strong>incoming traffic</strong>
           </div>
-          <div class="ward-node">
-            <span class="node-ring"></span>
-            <span class="node-core">NW</span>
-          </div>
-          <div class="lane lane-mirror">
-            <span class="packet packet-d"></span>
-            <span class="packet packet-e"></span>
-            <strong>known abuse</strong>
-          </div>
-          <div class="destination destination-upstream">upstream</div>
-          <div class="destination destination-mirror">mirror</div>
+          <div class="route-line route-line-in"></div>
+          <div class="ward-node"><span>NW</span><small>classify</small></div>
+          <div class="route-line route-line-clean"></div>
+          <div class="route-line route-line-mirror"></div>
+          <div class="route-target upstream-target"><span>200</span><strong>upstream</strong><small>clean request</small></div>
+          <div class="route-target mirror-target"><span>↺</span><strong>mirror</strong><small>known probe</small></div>
+          <div class="route-status status-clean">PASS · REAL SERVICE</div>
+          <div class="route-status status-mirror">DEFLECT · HARMLESS RESPONSE</div>
         </div>
       </div>
     </section>
 
-    <section class="impact-band" aria-label="Positioning">
-      <p>
-        Small services get scraped, scanned, and shoved around before they have a security team.
-        Net Ward gives them a local buffer that behaves like infrastructure, not theater.
-      </p>
+    <section class="impact-band" aria-label="Net Ward positioning">
+      <p>A small service should not need a giant cloud contract to waste a bot’s time.</p>
     </section>
 
-    <section class="section split" id="how">
-      <div>
+    <section class="section operating-model" id="how">
+      <div class="section-copy">
         <p class="section-kicker">Operating model</p>
-        <h2>Always on, fail open, no retaliation.</h2>
+        <h2>One request path.<br>Two useful exits.</h2>
         <p>
-          Net Ward is built for teams that need a practical buffer in front of a small service.
-          It is not a cloud WAF and it is not a hostile countermeasure. It is a local reverse
-          proxy that classifies request shape and routes known abuse into safe, plausible mirrors.
+          Net Ward observes request shape, installed patterns, and local activity context.
+          Legitimate traffic passes upstream. A request that matches a known deception pattern
+          receives a normal, harmless HTTP response from the mirror layer instead.
         </p>
+        <a class="text-link" href="https://github.com/Dragon-Lady/netward-standalone#safety-model" target="_blank" rel="noreferrer">Read the safety model <span aria-hidden="true">→</span></a>
       </div>
-      <div class="flow-panel" aria-label="Request flow">
-        <div class="flow-row">
-          <span class="flow-dot good"></span>
-          <div>
-            <strong>Clean request</strong>
-            <p>Forwarded to the upstream service.</p>
-          </div>
-        </div>
-        <div class="flow-row">
-          <span class="flow-dot watch"></span>
-          <div>
-            <strong>Known probe</strong>
-            <p>Matched against bundled or operator patterns.</p>
-          </div>
-        </div>
-        <div class="flow-row">
-          <span class="flow-dot mirror"></span>
-          <div>
-            <strong>Mirror response</strong>
-            <p>Returns harmless fake pages, redirects, or status shapes.</p>
-          </div>
-        </div>
-      </div>
+      <ol class="flow-panel" aria-label="Request flow">
+        <li>
+          <span class="step-number">01</span>
+          <div><strong>Receive locally</strong><p>A user-space HTTP reverse proxy accepts the request in front of your app.</p></div>
+        </li>
+        <li>
+          <span class="step-number">02</span>
+          <div><strong>Classify conservatively</strong><p>Bundled and operator patterns review the path, selected headers, and local abuse context.</p></div>
+        </li>
+        <li class="flow-pass">
+          <span class="step-number">03A</span>
+          <div><strong>Pass clean traffic</strong><p>Unmatched requests continue to the real upstream service.</p></div>
+        </li>
+        <li class="flow-deflect">
+          <span class="step-number">03B</span>
+          <div><strong>Mirror known probes</strong><p>Matched automation receives a plausible, harmless response and never reaches the app.</p></div>
+        </li>
+      </ol>
     </section>
 
-    <section class="section feature-grid" aria-label="Core features">
+    <section class="posture-grid" id="posture" aria-label="Security posture">
       <article>
-        <h3>User-space deployment</h3>
-        <p>No kernel hooks, packet tampering, or special cloud account required. Run it in front of an HTTP service.</p>
+        <span class="card-code">SPACE</span>
+        <h3>User-space only</h3>
+        <p>No kernel modules, packet tampering, or privileged network hooks.</p>
       </article>
       <article>
-        <h3>Safe deception</h3>
-        <p>Mirror responses are normal HTTP responses. No malware, no retaliation, no maintainer telemetry.</p>
+        <span class="card-code">SAFE</span>
+        <h3>Deception, not retaliation</h3>
+        <p>Mirrors return normal HTTP. No hostile payloads, malware, or counterattack behavior.</p>
       </article>
       <article>
-        <h3>Operator patterns</h3>
-        <p>Ship with bundled probe patterns, disable collisions, and add local patterns with insertion-time validation.</p>
+        <span class="card-code">OPEN</span>
+        <h3>Fail-open posture</h3>
+        <p>Classification, storage, or rendering failures are designed to pass traffic upstream.</p>
       </article>
       <article>
-        <h3>Load visibility</h3>
-        <p>Includes an operator load generator to measure latency, error rates, and process resource behavior.</p>
+        <span class="card-code">LOCAL</span>
+        <h3>Operator-owned data</h3>
+        <p>Traffic records remain in the operator’s local SQLite database. Nothing is sent to the project.</p>
       </article>
     </section>
 
     <section class="section quickstart" id="quickstart">
-      <div>
+      <div class="section-copy">
         <p class="section-kicker">Quick start</p>
-        <h2>Run it from a checkout.</h2>
-        <p>Point `upstream_target` at the service you want to protect, then put Net Ward in front of it.</p>
+        <h2>Put a local ward<br>in front of your app.</h2>
+        <p>
+          Install Net Ward, copy the example configuration, and point
+          <code>upstream_target</code> at the service you want to protect.
+        </p>
       </div>
-      <pre><code>pip install -e .
-python -m netward --config example_config.json</code></pre>
+      <div class="code-stack">
+        <div class="code-card">
+          <span>Install</span>
+          <pre><code><b>$</b> pip install netward</code></pre>
+        </div>
+        <div class="code-card">
+          <span>Configure</span>
+          <pre><code><b>$</b> cp example_config.json config.json
+<b>$</b> $EDITOR config.json</code></pre>
+        </div>
+        <div class="code-card">
+          <span>Run</span>
+          <pre><code><b>$</b> python -m netward --config config.json</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section capabilities" aria-labelledby="capabilities-title">
+      <div class="capabilities-heading">
+        <div>
+          <p class="section-kicker">What ships today</p>
+          <h2 id="capabilities-title">Practical controls for the traffic you actually see.</h2>
+        </div>
+        <p>
+          Net Ward combines safe defaults with operator control. Patterns are inspectable,
+          collisions can be disabled, and the project ships the load tooling needed to test
+          behavior before a real service depends on it.
+        </p>
+      </div>
+      <div class="capability-grid">
+        <article>
+          <span class="capability-mark cyan" aria-hidden="true">PAT</span>
+          <h3>Bundled probe patterns</h3>
+          <p>Common scanners, admin probes, environment-file paths, and current appliance-targeting signals.</p>
+        </article>
+        <article>
+          <span class="capability-mark amber" aria-hidden="true">OPS</span>
+          <h3>Operator patterns</h3>
+          <p>Add local detection rules, validate them at insertion, and disable patterns that collide with real routes.</p>
+        </article>
+        <article>
+          <span class="capability-mark coral" aria-hidden="true">MIR</span>
+          <h3>Rotating mirror shapes</h3>
+          <p>Return plausible JSON, HTML, redirect, empty-result, or rate-limit responses without a fixed fingerprint.</p>
+        </article>
+        <article>
+          <span class="capability-mark green" aria-hidden="true">LOAD</span>
+          <h3>Load visibility</h3>
+          <p>Exercise latency, error rate, and process resource behavior before choosing an operating envelope.</p>
+        </article>
+      </div>
     </section>
 
     <section class="section proof" id="proof">
-      <div>
-        <p class="section-kicker">Proof</p>
-        <h2>Reviewed, patched, and tagged before release.</h2>
+      <div class="proof-copy">
+        <p class="section-kicker">Proof, not theater</p>
+        <h2>Reviewed, patched, and public about the edges.</h2>
         <p>
-          Net Ward v0.4.1 shipped only after an internal pre-launch security review
-          found and closed the launch-blocking issues. The public release includes the
-          patch notes, known limitations, and operator guidance instead of asking users
-          to trust a vague claim.
+          Net Ward’s pre-launch review found three critical issues before v0.4.1 and closed
+          them before release. The current v0.4.6 line keeps the security policy, changelog,
+          tests, and known limitations public instead of asking operators to trust a badge.
         </p>
         <div class="proof-actions">
-          <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/SECURITY.md" target="_blank" rel="noreferrer">Read the security policy</a>
-          <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Read the changelog</a>
+          <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/SECURITY.md" target="_blank" rel="noreferrer">Security policy</a>
+          <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Release history</a>
         </div>
       </div>
-      <div class="proof-panel" aria-label="Release evidence">
-        <article>
-          <span>Release tag</span>
-          <strong>v0.4.1</strong>
-          <p>Published from commit <code>a14414f</code> after the security patch.</p>
-        </article>
-        <article>
-          <span>Test gate</span>
-          <strong>318 passed</strong>
-          <p>Full local suite was green before launch.</p>
-        </article>
-        <article>
-          <span>Criticals</span>
-          <strong>3 closed</strong>
-          <p>Basic Auth loop, flood self-denial, and 502 deception oracle were fixed.</p>
-        </article>
-        <article>
-          <span>Scope</span>
-          <strong>5 lanes</strong>
-          <p>Fingerprinting, detection, install path, supply chain, and runtime load.</p>
-        </article>
+      <div class="metric-grid" aria-label="Release evidence">
+        <article><span>Current release</span><strong>v0.4.6</strong><p>Current supported alpha line.</p></article>
+        <article><span>CI matrix</span><strong>3×</strong><p>Python 3.10, 3.11, and 3.12.</p></article>
+        <article><span>Pre-launch criticals</span><strong>3 closed</strong><p>Patched before public launch.</p></article>
+        <article><span>Maintainer telemetry</span><strong>0</strong><p>No project analytics or traffic upload.</p></article>
+      </div>
+    </section>
+
+    <section class="section data-boundary" aria-labelledby="data-title">
+      <div>
+        <p class="section-kicker">Privacy boundary</p>
+        <h2 id="data-title">Local does not mean invisible. It means operator-owned.</h2>
+      </div>
+      <div class="data-copy">
+        <p>
+          A live reverse proxy needs local evidence to classify abuse. Depending on configuration,
+          the SQLite record may include source IPs, timestamps, paths, selected headers, query strings,
+          request sizes, short body snippets, classifications, and alert metadata.
+        </p>
+        <p>
+          That data stays on the operator’s machine. Net Ward does not upload it, sell it, share it,
+          or use it for project telemetry. Operators remain responsible for access controls, retention,
+          and handling under their own privacy obligations.
+        </p>
       </div>
     </section>
 
     <section class="section limits" id="limits">
-      <div class="limits-copy">
-        <p class="section-kicker">Known limits</p>
-        <h2>Honest about the edges.</h2>
-        <p>
-          Net Ward is an alpha. The changelog documents the boundaries operators need to plan around:
-          regex policy is best-effort static analysis in v0.4.1, reverse-proxy source awareness is deferred,
-          Windows DB ACL enforcement is deferred, and coordinated low-rate multi-source floods are v0.5 work.
-        </p>
+      <div class="limits-heading">
+        <p class="section-kicker">Known limits · v0.4.x</p>
+        <h2>Useful now.<br>Not pretending to be finished.</h2>
       </div>
-      <a class="button secondary" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Read the changelog</a>
+      <div class="limits-list">
+        <p><span>01</span> Static regex checks are best-effort; untrusted custom patterns still require review.</p>
+        <p><span>02</span> Reverse-proxy source awareness requires manual <code>X-Forwarded-For</code> handling.</p>
+        <p><span>03</span> Windows database ACL enforcement is documented but not automatic in v0.4.x.</p>
+        <p><span>04</span> Flood context is single-source; coordinated low-rate multi-source detection is future work.</p>
+        <p><span>05</span> Continuous heavy-load operators should monitor RSS and restart on their chosen threshold.</p>
+      </div>
     </section>
 
-    <section class="section support" aria-labelledby="support-title">
+    <section class="section support-band" aria-labelledby="support-title">
       <div>
-        <p class="section-kicker">Software support</p>
-        <h2 id="support-title">Support options for Net Ward operators and sponsors.</h2>
+        <p class="section-kicker">Operator and project support</p>
+        <h2 id="support-title">Questions, security reports, and sponsorship—routed clearly.</h2>
         <p>
-          Net Ward is open-source alpha software. Project sponsorship supports maintenance,
-          testing, documentation, and planned v0.5 work. Operators can also use the support
-          page for issue reporting, security reporting, and repository questions.
+          Net Ward is open-source alpha software. The support page separates product questions,
+          private vulnerability reporting, source inspection, and voluntary project sponsorship.
         </p>
       </div>
-      <a class="button primary" href="support.html">Open support page</a>
+      <a class="button primary" href="support.html">Open support options</a>
     </section>
 
-    <section class="section faq" aria-label="Frequently asked questions">
-      <h2>Questions operators ask first.</h2>
+    <section class="section faq" aria-labelledby="faq-title">
+      <p class="section-kicker">Questions operators ask first</p>
+      <h2 id="faq-title">Know the boundary before traffic depends on it.</h2>
       <details>
-        <summary>Is Net Ward a WAF?</summary>
-        <p>No. It is a small reverse-proxy deception layer. It does not replace application security or a full edge stack.</p>
+        <summary>Is Net Ward a WAF or complete DDoS service?</summary>
+        <p>No. It is a small, local reverse-proxy deception layer for known probes and low-end abuse. It does not replace application security, an edge network, rate limiting, or a full WAF.</p>
       </details>
       <details>
-        <summary>Does it attack bots back?</summary>
-        <p>No. Net Ward returns harmless HTTP responses. The mirror layer is meant to deflect automated abuse, not retaliate.</p>
+        <summary>Does it attack scanners or bots back?</summary>
+        <p>No. Mirror responses are ordinary, harmless HTTP. Net Ward does not exploit, infect, retaliate against, or damage a visitor.</p>
       </details>
       <details>
-        <summary>What happens if Net Ward fails?</summary>
-        <p>The design goal is fail open: classification, storage, or mirror failures should pass traffic to upstream.</p>
+        <summary>What happens when classification fails?</summary>
+        <p>The design goal is fail-open: classification, storage, and mirror-rendering failures pass the request upstream. An unreachable upstream receives a default mirror rather than exposing a raw proxy-error oracle.</p>
       </details>
       <details>
         <summary>Does Net Ward collect my traffic?</summary>
-        <p>No traffic is sent to the project maintainers. Operators own their local SQLite records, which are used only for local DDoS, probe, and bot-deflection decisions.</p>
+        <p>It stores operator-owned local records needed for detection. Nothing is sent to the maintainers. Review the privacy boundary above and configure retention for your environment.</p>
       </details>
       <details>
-        <summary>Who is it for right now?</summary>
-        <p>Small teams running HTTP services that want a practical, local deflection layer and are comfortable operating alpha software.</p>
+        <summary>Who should run it today?</summary>
+        <p>Operators of small HTTP services who understand reverse proxies, can review alpha limitations, and want a local deflection layer they can inspect.</p>
       </details>
     </section>
 
     <section class="final-cta">
-      <p class="section-kicker">Ready to inspect it?</p>
-      <h2>Start with the code.</h2>
-      <a class="button primary" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">Open the repository</a>
+      <div>
+        <p class="section-kicker">Start with the code</p>
+        <h2>Let clean traffic through.<br>Send known abuse somewhere harmless.</h2>
+      </div>
+      <div class="final-actions">
+        <a class="button primary" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">Open the repository</a>
+        <a class="text-link light" href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor Dragon Lady <span aria-hidden="true">→</span></a>
+      </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    <span>Net Ward v0.4.1</span>
-    <span>Apache 2.0</span>
-    <a href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor</a>
-    <a href="support.html">Support</a>
-    <a href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub</a>
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">NW</span>
+      <span>Net Ward</span>
+    </a>
+    <p>Local HTTP deception. Apache-2.0.</p>
+    <nav aria-label="Footer navigation">
+      <a href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub</a>
+      <a href="https://pypi.org/project/netward/" target="_blank" rel="noreferrer">PyPI</a>
+      <a href="support.html">Support</a>
+      <a href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor</a>
+    </nav>
   </footer>
 </body>
 </html>

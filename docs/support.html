@@ -3,104 +3,111 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Support options for Net Ward operators, sponsors, and security reporters.">
-  <title>Net Ward Support</title>
+  <meta name="theme-color" content="#0a1117">
+  <meta name="description" content="Support, security reporting, source, and sponsorship options for Net Ward operators.">
+  <link rel="canonical" href="https://dragon-lady.github.io/netward-standalone/support.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
+  <title>Net Ward | Support options</title>
 </head>
-<body>
+<body class="support-page">
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <a class="brand" href="index.html" aria-label="Net Ward home">
       <span class="brand-mark" aria-hidden="true">NW</span>
       <span>Net Ward</span>
     </a>
-    <nav class="nav-links" aria-label="Primary">
+    <nav class="nav-links" aria-label="Primary navigation">
       <a href="index.html#how">How it works</a>
+      <a href="index.html#posture">Posture</a>
       <a href="index.html#proof">Proof</a>
       <a href="index.html#limits">Limits</a>
       <a href="support.html">Support</a>
-      <a href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor</a>
-      <a class="nav-cta" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub</a>
+      <a class="nav-cta" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub <span aria-hidden="true">↗</span></a>
     </nav>
   </header>
 
-  <main>
+  <main id="main">
     <section class="support-hero" aria-labelledby="support-page-title">
-      <p class="eyebrow">Net Ward support</p>
-      <h1 id="support-page-title">Support options</h1>
-      <p class="hero-text">
-        Net Ward is open-source alpha software for local HTTP bot deflection. Support
-        channels are for product questions, operator issues, security reports, and
-        voluntary project sponsorship.
-      </p>
-    </section>
-
-    <section class="section feature-grid support-grid" aria-label="Support options">
-      <article>
-        <h3>Product questions</h3>
-        <p>Use GitHub issues for installation questions, configuration problems, bug reports, and documentation requests.</p>
-        <a class="text-link" href="https://github.com/Dragon-Lady/netward-standalone/issues" target="_blank" rel="noreferrer">Open GitHub issues</a>
-      </article>
-      <article>
-        <h3>Security reports</h3>
-        <p>Use the repository security policy for vulnerability reports and responsible disclosure instructions.</p>
-        <a class="text-link" href="https://github.com/Dragon-Lady/netward-standalone/blob/main/SECURITY.md" target="_blank" rel="noreferrer">Read the security policy</a>
-      </article>
-      <article>
-        <h3>Project sponsorship</h3>
-        <p>Sponsorship supports independent software development, testing, maintenance, and documentation for Net Ward.</p>
-        <a class="text-link" href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor on GitHub</a>
-      </article>
-      <article>
-        <h3>Source code</h3>
-        <p>The public repository includes the install path, changelog, license, limitations, and current alpha release notes.</p>
-        <a class="text-link" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">View repository</a>
-      </article>
-    </section>
-
-    <section class="section split">
       <div>
-        <p class="section-kicker">What Net Ward sells</p>
-        <h2>Open-source software with voluntary sponsorship.</h2>
-        <p>
-          Net Ward is a user-space reverse proxy that helps small HTTP services deflect
-          automated probes and low-end abuse with safe HTTP mirror responses. Payments
-          through sponsorship support software development and maintenance; they are not
-          charitable donations, tax-deductible gifts, managed security services, or
-          peer-to-peer money transfer.
+        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> Net Ward operator routes</p>
+        <h1 id="support-page-title">Get to the right<br><span>kind of help.</span></h1>
+        <p class="hero-text">
+          Product questions, private security reports, source inspection, and project
+          sponsorship have different boundaries. Choose the lane that matches what you need.
         </p>
       </div>
-      <div class="flow-panel" aria-label="Support scope">
-        <div class="flow-row">
-          <span class="flow-dot good"></span>
-          <div>
-            <strong>Included channels</strong>
-            <p>GitHub issues, public documentation, security policy, changelog, and repository discussions through normal GitHub workflows.</p>
-          </div>
-        </div>
-        <div class="flow-row">
-          <span class="flow-dot watch"></span>
-          <div>
-            <strong>Alpha boundaries</strong>
-            <p>No guaranteed response time, no managed hosting, no emergency incident response, and no lifetime custom support promise.</p>
-          </div>
-        </div>
-        <div class="flow-row">
-          <span class="flow-dot mirror"></span>
-          <div>
-            <strong>Security scope</strong>
-            <p>Net Ward uses harmless HTTP responses. It does not attack visitors, distribute malware, or retaliate against bots.</p>
-          </div>
-        </div>
+      <div class="support-route-card" aria-hidden="true">
+        <span>QUESTION</span><b>→</b><strong>GitHub issues</strong>
+        <span>VULNERABILITY</span><b>→</b><strong>Private report</strong>
+        <span>SOURCE</span><b>→</b><strong>Repository</strong>
+        <span>SUPPORT</span><b>→</b><strong>Sponsorship</strong>
       </div>
+    </section>
+
+    <section class="support-options" aria-label="Support options">
+      <article>
+        <span class="support-number">01</span>
+        <h2>Product questions</h2>
+        <p>Use GitHub issues for installation problems, configuration questions, bug reports, and documentation requests. Sanitize traffic examples before posting.</p>
+        <a class="text-link" href="https://github.com/Dragon-Lady/netward-standalone/issues" target="_blank" rel="noreferrer">Open GitHub issues <span aria-hidden="true">→</span></a>
+      </article>
+      <article>
+        <span class="support-number">02</span>
+        <h2>Security reports</h2>
+        <p>Do not publish vulnerability details in a normal issue. Use GitHub private vulnerability reporting and follow the repository disclosure policy.</p>
+        <a class="text-link" href="https://github.com/Dragon-Lady/netward-standalone/security/policy" target="_blank" rel="noreferrer">Read the security policy <span aria-hidden="true">→</span></a>
+      </article>
+      <article>
+        <span class="support-number">03</span>
+        <h2>Source inspection</h2>
+        <p>The public repository contains the package, tests, release history, operator guidance, known limitations, Dockerfile, and license.</p>
+        <a class="text-link" href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">Inspect the repository <span aria-hidden="true">→</span></a>
+      </article>
+      <article>
+        <span class="support-number">04</span>
+        <h2>Project sponsorship</h2>
+        <p>Voluntary sponsorship supports independent maintenance, testing, security review, documentation, and future Net Ward releases.</p>
+        <a class="text-link" href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor Dragon Lady <span aria-hidden="true">→</span></a>
+      </article>
+    </section>
+
+    <section class="section support-scope">
+      <div>
+        <p class="section-kicker">Support scope</p>
+        <h2>Open-source software.<br>Clear operational boundaries.</h2>
+        <p>
+          Net Ward support covers public documentation, reproducible product issues,
+          coordinated vulnerability reporting, and normal repository workflows.
+        </p>
+      </div>
+      <div class="scope-list">
+        <p><span>Included</span> Documentation, GitHub issues, release notes, and responsible disclosure.</p>
+        <p><span>Not promised</span> Guaranteed response time, managed hosting, emergency incident response, or custom lifetime support.</p>
+        <p><span>Never acceptable</span> Live exploits against systems you do not own, real credentials, customer data, or public working exploit details.</p>
+      </div>
+    </section>
+
+    <section class="final-cta compact-cta">
+      <div>
+        <p class="section-kicker">Return to the product</p>
+        <h2>See how Net Ward routes traffic.</h2>
+      </div>
+      <a class="button primary" href="index.html">Back to Net Ward</a>
     </section>
   </main>
 
   <footer class="site-footer">
-    <span>Net Ward v0.4.1</span>
-    <span>Apache 2.0</span>
-    <a href="index.html">Home</a>
-    <a href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor</a>
-    <a href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub</a>
+    <a class="brand" href="index.html">
+      <span class="brand-mark" aria-hidden="true">NW</span>
+      <span>Net Ward</span>
+    </a>
+    <p>Local HTTP deception. Apache-2.0.</p>
+    <nav aria-label="Footer navigation">
+      <a href="index.html">Home</a>
+      <a href="https://github.com/Dragon-Lady/netward-standalone" target="_blank" rel="noreferrer">GitHub</a>
+      <a href="https://github.com/sponsors/Dragon-Lady" target="_blank" rel="noreferrer">Sponsor</a>
+    </nav>
   </footer>
 </body>
 </html>
