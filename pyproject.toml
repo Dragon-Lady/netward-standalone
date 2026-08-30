@@ -29,7 +29,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Dragon-Lady/netward-standalone"
+Homepage = "https://dragon-lady.github.io/netward-standalone/"
+Documentation = "https://dragon-lady.github.io/netward-standalone/"
 Repository = "https://github.com/Dragon-Lady/netward-standalone"
 Issues = "https://github.com/Dragon-Lady/netward-standalone/issues"
 
