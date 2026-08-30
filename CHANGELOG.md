@@ -5,6 +5,13 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-08-30
+
+### Changed
+
+- PyPI Homepage and Documentation now point at
+  https://dragon-lady.github.io/netward-standalone/
+
 ## [0.4.6] - 2026-06-24
 
 ### Changed
