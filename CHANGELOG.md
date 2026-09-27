@@ -5,6 +5,8 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-09-27
+
 ### Security
 
 - Request-path storage reads (`sources_lookup`, `mirror_response_lookup`) now
