@@ -193,6 +193,15 @@ class TestSchemaConstants:
         # Heartbeats between 30s and 5 min
         assert 30 <= schema.HEARTBEAT_INTERVAL_SECS <= 300
 
+    def test_upstream_budgets_are_positive(self):
+        assert schema.UPSTREAM_TIMEOUT_TOTAL_SECS > 0
+        assert schema.UPSTREAM_TIMEOUT_CONNECT_SECS > 0
+        assert schema.UPSTREAM_TIMEOUT_SOCK_READ_SECS > 0
+        assert schema.UPSTREAM_MAX_CONCURRENCY >= 1
+        assert schema.UPSTREAM_MAX_BODY_BYTES >= 1024
+        assert schema.PROBE_RETENTION_SECS > 0
+        assert schema.PROBE_MAX_ROWS >= 1
+
 
 # ---------------------------------------------------------------------------
 # Trust manifest — versioning + chain auditability

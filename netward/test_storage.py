@@ -14,6 +14,7 @@ Coverage:
 """
 from __future__ import annotations
 
+import json
 import time
 import uuid
 
@@ -234,6 +235,111 @@ def test_probe_recent_isolates_by_source(storage):
 
     assert storage.probes_recent_for_source(src_a, 60, now) == 1
     assert storage.probes_recent_for_source(src_b, 60, now) == 1
+
+
+def _logged_request(storage, probe_id: str) -> dict:
+    row = storage._conn.execute(
+        "SELECT request_json FROM probes WHERE id = ?", (probe_id,)
+    ).fetchone()
+    assert row is not None
+    return json.loads(row["request_json"])
+
+
+def test_probes_log_redacts_sensitive_headers(storage):
+    probe = _make_probe(source_id=str(uuid.uuid4()))
+    probe["request"]["headers"] = {
+        "Authorization": "Basic dXNlcjpwYXNz",
+        "Cookie": "session=abc123",
+        "Set-Cookie": "session=abc123; HttpOnly",
+        "Proxy-Authorization": "Basic eHh4",
+        "User-Agent": "evil-scanner/1.0",
+        "X-Api-Key": "super-secret-key",
+    }
+    storage.probes_log(probe)
+    stored = _logged_request(storage, probe["id"])
+    assert stored["headers"]["Authorization"] == "[REDACTED]"
+    assert stored["headers"]["Cookie"] == "[REDACTED]"
+    assert stored["headers"]["Set-Cookie"] == "[REDACTED]"
+    assert stored["headers"]["Proxy-Authorization"] == "[REDACTED]"
+    assert stored["headers"]["X-Api-Key"] == "[REDACTED]"
+    assert stored["headers"]["User-Agent"] == "evil-scanner/1.0"
+    assert "dXNlcjpwYXNz" not in json.dumps(stored)
+    assert "abc123" not in json.dumps(stored)
+    assert probe["request"]["headers"]["Authorization"] == "Basic dXNlcjpwYXNz"
+
+
+def test_probes_log_redacts_password_like_body_keys(storage):
+    probe = _make_probe(source_id=str(uuid.uuid4()))
+    probe["request"]["body_snippet"] = "username=alice&password=s3cret&token=abc"
+    probe["request"]["body_size"] = len(probe["request"]["body_snippet"])
+    storage.probes_log(probe)
+    stored = _logged_request(storage, probe["id"])
+    assert "s3cret" not in stored["body_snippet"]
+    assert "alice" in stored["body_snippet"]
+    assert "[REDACTED]" in stored["body_snippet"]
+
+
+def test_probes_log_redacts_json_password_body(storage):
+    probe = _make_probe(source_id=str(uuid.uuid4()))
+    probe["request"]["body_snippet"] = '{"username":"alice","password":"s3cret"}'
+    storage.probes_log(probe)
+    stored = _logged_request(storage, probe["id"])
+    assert "s3cret" not in stored["body_snippet"]
+    assert "alice" in stored["body_snippet"]
+
+
+def test_probes_log_redacts_password_like_query_keys(storage):
+    probe = _make_probe(source_id=str(uuid.uuid4()))
+    probe["request"]["query_string"] = "q=hello&access_token=leakme"
+    storage.probes_log(probe)
+    stored = _logged_request(storage, probe["id"])
+    assert "leakme" not in (stored.get("query_string") or "")
+    assert "hello" in (stored.get("query_string") or "")
+
+
+def test_probes_purge_by_ttl(storage):
+    src = str(uuid.uuid4())
+    now = time.time()
+    storage.probes_log(_make_probe(source_id=src, ts=now - 3600))
+    storage.probes_log(_make_probe(source_id=src, ts=now - 10))
+    removed = storage.probes_purge(now=now, retention_secs=60, max_rows=10_000)
+    assert removed == 1
+    assert storage.probes_recent_for_source(src, window_secs=10_000, now=now) == 1
+
+
+def test_probes_purge_by_max_rows_keeps_newest(storage):
+    src = str(uuid.uuid4())
+    now = time.time()
+    for i in range(5):
+        storage.probes_log(_make_probe(source_id=src, ts=now - 5 + i))
+    removed = storage.probes_purge(now=now, retention_secs=86_400, max_rows=2)
+    assert removed == 3
+    assert storage.probes_recent_for_source(src, window_secs=10_000, now=now) == 2
+    rows = storage._conn.execute(
+        "SELECT timestamp FROM probes ORDER BY timestamp ASC"
+    ).fetchall()
+    assert [r["timestamp"] for r in rows] == [now - 2, now - 1]
+
+
+def test_probes_log_enforces_retention(tmp_path):
+    db = tmp_path / "retain.db"
+    s = Storage(db, probe_retention_secs=60, probe_max_rows=3)
+    try:
+        src = str(uuid.uuid4())
+        now = time.time()
+        for i in range(5):
+            s.probes_log(_make_probe(source_id=src, ts=now - 4 + i))
+        count = s._conn.execute("SELECT COUNT(*) AS c FROM probes").fetchone()["c"]
+        assert count <= 3
+        stale = s.probes_log(_make_probe(source_id=src, ts=now - 3600))
+        # the just-logged stale row must be purged by TTL on write
+        remaining = s._conn.execute(
+            "SELECT COUNT(*) AS c FROM probes WHERE timestamp < ?",
+            (now - 60,),
+        ).fetchone()["c"]
+        assert remaining == 0
+    finally:
+        s.close()
 
 
 # ----- MirrorResponse -----

@@ -268,3 +268,210 @@ async def test_no_match_routes_upstream(mock_storage):
     finally:
         await client.close()
         await session.close()
+
+
+# ---------------------------------------------------------------------------
+# Fail-open storage reads (v0.4.7 review)
+# ---------------------------------------------------------------------------
+
+class _FailingReadStorage(_MockStorage):
+    """Storage whose hot-path reads raise, simulating SQLite lock/IO/corruption."""
+
+    def sources_lookup(self, ip: str):
+        raise RuntimeError("sqlite locked: sources_lookup")
+
+    def mirror_response_lookup(self, mr_id: str):
+        raise RuntimeError("sqlite locked: mirror_response_lookup")
+
+
+@pytest.mark.asyncio
+async def test_storage_read_failure_fail_opens_never_500():
+    """
+    sources_lookup / mirror_response_lookup exceptions must not abort the
+    handler with 500. Traffic continues fail-open: forward upstream, or
+    default-mirror if upstream is down.
+    """
+    storage = _FailingReadStorage()
+    client, session = await _make_client(
+        _config(upstream="http://127.0.0.1:59994"), storage
+    )
+    try:
+        resp = await client.get("/api/status")
+        assert resp.status != 500, (
+            "storage read failure must not 500 the request path"
+        )
+        assert resp.status in {200, 429, 503}
+        body = await resp.text()
+        assert body  # default mirror or upstream body, never an empty crash
+    finally:
+        await client.close()
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_storage_read_failure_still_forwards_when_upstream_up(mock_storage):
+    """When storage reads fail but upstream is healthy, traffic still passes."""
+    served: list[str] = []
+
+    async def upstream_ok(request):
+        served.append(request.path)
+        return web.Response(text="from upstream")
+
+    app = web.Application()
+    app.router.add_route("*", "/{tail:.*}", upstream_ok)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        storage = _FailingReadStorage()
+        client, session = await _make_client(
+            _config(upstream=f"http://127.0.0.1:{port}"), storage
+        )
+        try:
+            resp = await client.get("/healthz")
+            assert resp.status == 200
+            assert await resp.text() == "from upstream"
+            assert served == ["/healthz"]
+        finally:
+            await client.close()
+            await session.close()
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_mirror_lookup_failure_uses_default_mirror(stub_mirror):
+    """
+    A pattern that names a mirror_response_id must still return a mirror
+    (never 500) when mirror_response_lookup raises.
+    """
+    storage = _FailingReadStorage()
+    pat = _wp_admin_pattern()
+    pat["mirror_response_id"] = "mr-missing"
+    storage.patterns = [pat]
+    client, session = await _make_client(_config(), storage)
+    try:
+        resp = await client.get("/wp-admin/login.php")
+        assert resp.status != 500
+        assert resp.status == 200
+        assert "mirrored" in await resp.text()
+    finally:
+        await client.close()
+        await session.close()
+
+
+# ---------------------------------------------------------------------------
+# Upstream timeouts + concurrency cap
+# ---------------------------------------------------------------------------
+
+async def _spin_upstream(handler) -> tuple[web.AppRunner, int]:
+    app = web.Application()
+    app.router.add_route("*", "/{tail:.*}", handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    return runner, port
+
+
+@pytest.mark.asyncio
+async def test_upstream_timeout_fail_opens_to_default_mirror(mock_storage):
+    """Hung upstream must not pin the worker; request fail-opens to default mirror."""
+
+    async def slow(request):
+        await asyncio.sleep(10)
+        return web.Response(text="too late")
+
+    runner, port = await _spin_upstream(slow)
+    try:
+        cfg = _config(upstream=f"http://127.0.0.1:{port}")
+        cfg["upstream_timeout_total"] = 0.2
+        cfg["upstream_timeout_connect"] = 0.2
+        cfg["upstream_timeout_sock_read"] = 0.2
+        client, session = await _make_client(cfg, mock_storage)
+        try:
+            t0 = time.monotonic()
+            resp = await client.get("/slow")
+            elapsed = time.monotonic() - t0
+            assert elapsed < 2.0, f"upstream timeout did not fire, elapsed={elapsed:.2f}s"
+            assert resp.status != 500
+            assert resp.status in {200, 429, 503}
+            assert "too late" not in await resp.text()
+        finally:
+            await client.close()
+            await session.close()
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_upstream_concurrency_cap_serializes_in_flight(mock_storage):
+    """upstream_max_concurrency=1 must keep at most one upstream request in flight."""
+    release = asyncio.Event()
+    in_flight = 0
+    max_seen = 0
+    lock = asyncio.Lock()
+
+    async def hold(request):
+        nonlocal in_flight, max_seen
+        async with lock:
+            in_flight += 1
+            max_seen = max(max_seen, in_flight)
+        try:
+            await asyncio.wait_for(release.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            pass
+        async with lock:
+            in_flight -= 1
+        return web.Response(text="ok")
+
+    runner, port = await _spin_upstream(hold)
+    try:
+        cfg = _config(upstream=f"http://127.0.0.1:{port}")
+        cfg["upstream_max_concurrency"] = 1
+        cfg["upstream_timeout_total"] = 5.0
+        client, session = await _make_client(cfg, mock_storage)
+        try:
+            t1 = asyncio.create_task(client.get("/a"))
+            t2 = asyncio.create_task(client.get("/b"))
+            await asyncio.sleep(0.3)
+            assert max_seen <= 1, f"concurrency cap leaked; max in-flight={max_seen}"
+            release.set()
+            r1, r2 = await asyncio.gather(t1, t2)
+            assert r1.status == 200
+            assert r2.status == 200
+            assert await r1.text() == "ok"
+            assert await r2.text() == "ok"
+        finally:
+            await client.close()
+            await session.close()
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_upstream_body_over_cap_fail_opens_to_default_mirror(mock_storage):
+    """Oversized upstream bodies are not fully buffered; request fail-opens."""
+
+    async def fat(request):
+        return web.Response(body=b"X" * 2048)
+
+    runner, port = await _spin_upstream(fat)
+    try:
+        cfg = _config(upstream=f"http://127.0.0.1:{port}")
+        cfg["upstream_max_body_bytes"] = 64
+        client, session = await _make_client(cfg, mock_storage)
+        try:
+            resp = await client.get("/fat")
+            assert resp.status != 500
+            body = await resp.text()
+            assert "X" * 64 not in body
+            assert resp.status in {200, 429, 503}
+        finally:
+            await client.close()
+            await session.close()
+    finally:
+        await runner.cleanup()

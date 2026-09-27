@@ -33,5 +33,26 @@
   "alert_slack_webhook": null,
 
   "_comment_alert_ntfy_topic": "Reserved ntfy topic for later alert delivery.",
-  "alert_ntfy_topic": null
+  "alert_ntfy_topic": null,
+
+  "_comment_upstream_timeout_total": "Whole-request budget for the upstream call, in seconds. Hung origins fail-open to the default mirror.",
+  "upstream_timeout_total": 10,
+
+  "_comment_upstream_timeout_connect": "Connect timeout (DNS + TCP + TLS) in seconds.",
+  "upstream_timeout_connect": 3,
+
+  "_comment_upstream_timeout_sock_read": "Idle timeout between upstream socket reads, in seconds.",
+  "upstream_timeout_sock_read": 5,
+
+  "_comment_upstream_max_concurrency": "Maximum in-flight upstream requests.",
+  "upstream_max_concurrency": 64,
+
+  "_comment_upstream_max_body_bytes": "Max buffered upstream response body in bytes (default 8 MiB). Larger bodies fail-open to the default mirror.",
+  "upstream_max_body_bytes": 8388608,
+
+  "_comment_probe_retention_secs": "Probe-log TTL in seconds (default 7 days). Older rows are purged on write.",
+  "probe_retention_secs": 604800,
+
+  "_comment_probe_max_rows": "Maximum probe-log rows retained after purge-on-write.",
+  "probe_max_rows": 10000
 }

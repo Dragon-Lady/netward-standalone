@@ -55,6 +55,20 @@ from .schema import (
 
 _REQUIRED_CONFIG_FIELDS = frozenset({"node_id", "upstream_target", "listen_address"})
 _SUPPORTED_ALERT_CHANNELS = frozenset({"email", "slack", "webhook", "ntfy", "sms"})
+_POSITIVE_NUMBER_FIELDS = frozenset({
+    "upstream_timeout_total",
+    "upstream_timeout_connect",
+    "upstream_timeout_sock_read",
+    "upstream_max_concurrency",
+    "upstream_max_body_bytes",
+    "probe_retention_secs",
+    "probe_max_rows",
+})
+_POSITIVE_INTEGER_FIELDS = frozenset({
+    "upstream_max_concurrency",
+    "upstream_max_body_bytes",
+    "probe_max_rows",
+})
 
 
 class ValidationError(ValueError):
@@ -84,6 +98,7 @@ def load_config(path: str) -> OperatorConfig:
 
     _validate_required_fields(raw)
     _validate_alert_channels(raw)
+    _validate_optional_bounds(raw)
     raw["alert_channels"] = _normalized_alert_channels(raw)
     return raw
 
@@ -178,6 +193,19 @@ def _validate_alert_channels(config: dict) -> None:
     unknown = sorted(set(channels) - _SUPPORTED_ALERT_CHANNELS)
     if unknown:
         raise ValidationError(f"unknown alert channels: {', '.join(unknown)}")
+
+
+def _validate_optional_bounds(config: dict) -> None:
+    for field in _POSITIVE_NUMBER_FIELDS:
+        if field not in config or config[field] is None:
+            continue
+        value = config[field]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValidationError(f"{field} must be a positive number")
+        if value <= 0:
+            raise ValidationError(f"{field} must be a positive number")
+        if field in _POSITIVE_INTEGER_FIELDS and int(value) != value:
+            raise ValidationError(f"{field} must be a positive integer")
 
 
 def _normalized_alert_channels(config: dict) -> list[str]:

@@ -113,6 +113,33 @@ def test_load_config_rejects_unknown_alert_channel(tmp_path):
         load_config(str(path))
 
 
+def test_load_config_accepts_upstream_and_probe_bounds(tmp_path):
+    cfg = _config(
+        upstream_timeout_total=8,
+        upstream_timeout_connect=2,
+        upstream_timeout_sock_read=4,
+        upstream_max_concurrency=16,
+        upstream_max_body_bytes=1024,
+        probe_retention_secs=3600,
+        probe_max_rows=100,
+    )
+    path = tmp_path / "netward.json"
+    path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    loaded = load_config(str(path))
+
+    assert loaded["upstream_timeout_total"] == 8
+    assert loaded["probe_max_rows"] == 100
+
+
+def test_load_config_rejects_non_positive_upstream_timeout(tmp_path):
+    path = tmp_path / "netward.json"
+    path.write_text(json.dumps(_config(upstream_timeout_total=0)), encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="upstream_timeout_total"):
+        load_config(str(path))
+
+
 def test_validate_storage_permissions_rejects_world_writable_db(monkeypatch):
     tmpdir = _workspace_tempdir()
     try:

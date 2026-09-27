@@ -79,10 +79,13 @@ Design principles (encoded in every layer):
 - NO kernel hooks, NO packet drivers, NO invasive system changes
 - Run as user-space reverse proxy / sidecar / edge service ONLY
 - Config lives in its own directory; never modifies host config
-- Logs are append-only and bounded (no unbounded disk growth)
+- Probe logs are operator-owned, stored locally, and bounded by TTL plus a
+  max-row cap (purged on write). Sensitive headers and password-like
+  body/query keys are redacted before persist.
 - State/cache can be deleted without harming the host application
-- Crash behavior: operator chooses fail-open vs fail-closed explicitly
-  (default: fail-open — don't take the host's service down with us)
+- Crash behavior: fail-open. Classification, storage-read, and mirror
+  failures forward the request to upstream (or the default mirror if
+  upstream is unreachable). Fail-closed is not implemented in this release.
 - Uninstall = remove the service folder/config, NOT repair the OS
 - NO retaliatory traffic, NO client harm, NO "hack back"
 - Rate limiting and deflection must be REVERSIBLE and EXPLAINABLE
