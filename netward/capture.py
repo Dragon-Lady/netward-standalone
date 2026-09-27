@@ -25,7 +25,19 @@ from typing import Optional
 import aiohttp
 from aiohttp import web
 
-from netward.schema import OperatorConfig, Probe, RequestMetadata, Source
+from netward.schema import (
+    PROBE_MAX_ROWS,
+    PROBE_RETENTION_SECS,
+    UPSTREAM_MAX_BODY_BYTES,
+    UPSTREAM_MAX_CONCURRENCY,
+    UPSTREAM_TIMEOUT_CONNECT_SECS,
+    UPSTREAM_TIMEOUT_SOCK_READ_SECS,
+    UPSTREAM_TIMEOUT_TOTAL_SECS,
+    OperatorConfig,
+    Probe,
+    RequestMetadata,
+    Source,
+)
 from netward import classify as _classify_mod
 from netward import mirror as _mirror_mod
 
@@ -175,10 +187,42 @@ async def _build_probe(request: web.Request, source_id: str) -> Probe:
     }
 
 
+def _client_timeout_from_config(config: OperatorConfig) -> aiohttp.ClientTimeout:
+    return aiohttp.ClientTimeout(
+        total=float(config.get("upstream_timeout_total", UPSTREAM_TIMEOUT_TOTAL_SECS)),
+        connect=float(config.get("upstream_timeout_connect", UPSTREAM_TIMEOUT_CONNECT_SECS)),
+        sock_read=float(config.get("upstream_timeout_sock_read", UPSTREAM_TIMEOUT_SOCK_READ_SECS)),
+    )
+
+
+def _max_concurrency_from_config(config: OperatorConfig) -> int:
+    return max(1, int(config.get("upstream_max_concurrency", UPSTREAM_MAX_CONCURRENCY)))
+
+
+def _max_body_from_config(config: OperatorConfig) -> int:
+    return max(1, int(config.get("upstream_max_body_bytes", UPSTREAM_MAX_BODY_BYTES)))
+
+
+async def _read_capped_body(resp: aiohttp.ClientResponse, max_bytes: int) -> Optional[bytes]:
+    """Read an upstream body up to max_bytes. None means the cap was exceeded."""
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in resp.content.iter_chunked(65_536):
+        total += len(chunk)
+        if total > max_bytes:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 async def _forward_upstream(
     request: web.Request,
     upstream: str,
     session: aiohttp.ClientSession,
+    *,
+    timeout: Optional[aiohttp.ClientTimeout] = None,
+    semaphore: Optional[asyncio.Semaphore] = None,
+    max_body_bytes: int = UPSTREAM_MAX_BODY_BYTES,
 ) -> Optional[web.Response]:
     """Forward to upstream. Return None when upstream is unavailable."""
     url = upstream.rstrip("/") + request.path
@@ -189,22 +233,32 @@ async def _forward_upstream(
         k: v for k, v in request.headers.items()
         if k.lower() not in _HOP_BY_HOP and k.lower() != "host"
     }
-    try:
-        async with session.request(
-            method=request.method,
-            url=url,
-            headers=fwd_headers,
-            data=body,
-            allow_redirects=False,
-        ) as resp:
-            content = await resp.read()
-            resp_headers = {
-                k: v for k, v in resp.headers.items()
-                if k.lower() not in _HOP_BY_HOP | {"content-encoding"}
-            }
-            return web.Response(status=resp.status, headers=resp_headers, body=content)
-    except Exception:
-        return None
+
+    async def _do() -> Optional[web.Response]:
+        try:
+            async with session.request(
+                method=request.method,
+                url=url,
+                headers=fwd_headers,
+                data=body,
+                allow_redirects=False,
+                timeout=timeout,
+            ) as resp:
+                content = await _read_capped_body(resp, max_body_bytes)
+                if content is None:
+                    return None
+                resp_headers = {
+                    k: v for k, v in resp.headers.items()
+                    if k.lower() not in _HOP_BY_HOP | {"content-encoding"}
+                }
+                return web.Response(status=resp.status, headers=resp_headers, body=content)
+        except Exception:
+            return None
+
+    if semaphore is None:
+        return await _do()
+    async with semaphore:
+        return await _do()
 
 
 def _mirror_response_from_probe(probe: Probe, mirror: dict) -> web.Response:
@@ -229,6 +283,9 @@ def _fire_and_forget(storage, probe: Probe) -> None:
 
 def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSession):
     upstream = config["upstream_target"]
+    timeout = _client_timeout_from_config(config)
+    semaphore = asyncio.Semaphore(_max_concurrency_from_config(config))
+    max_body_bytes = _max_body_from_config(config)
 
     # Per-handler pattern cache (closure) so each handler instance starts fresh
     # and tests don't bleed stale cached patterns into each other.
@@ -249,17 +306,22 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
         ip = request.remote or "0.0.0.0"
         now = time.time()
 
-        # Source lookup or create
-        source: Source = storage.sources_lookup(ip) or {
-            "id": str(uuid.uuid4()),
-            "ip_address": ip,
-            "reputation": "neutral",
-            "first_seen": now,
-            "last_seen": now,
-            "probe_count": 0,
-            "legit_count": 0,
-            "notes": [],
-        }
+        # Source lookup or create — fail-open on storage read errors
+        try:
+            source = storage.sources_lookup(ip)
+        except Exception:
+            source = None
+        if not source:
+            source = {
+                "id": str(uuid.uuid4()),
+                "ip_address": ip,
+                "reputation": "neutral",
+                "first_seen": now,
+                "last_seen": now,
+                "probe_count": 0,
+                "legit_count": 0,
+                "notes": [],
+            }
         source_id: str = source["id"]
 
         # Rate window update (in-memory, bounded + evicting)
@@ -277,7 +339,14 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
             )
         except Exception:
             probe["classification"] = "unknown"
-            upstream_response = await _forward_upstream(request, upstream, session)
+            upstream_response = await _forward_upstream(
+                request,
+                upstream,
+                session,
+                timeout=timeout,
+                semaphore=semaphore,
+                max_body_bytes=max_body_bytes,
+            )
             if upstream_response is None:
                 probe["mirror_fired"] = True
                 probe["upstream_passed"] = False
@@ -312,12 +381,25 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
         _default_mr = _select_default_mirror(source_id, request.path)
         if result["fire_mirror"]:
             mr_id = result.get("mirror_response_id")
-            mr = (storage.mirror_response_lookup(mr_id) if mr_id else None) or _default_mr
+            mr = None
+            if mr_id:
+                try:
+                    mr = storage.mirror_response_lookup(mr_id)
+                except Exception:
+                    mr = None
+            mr = mr or _default_mr
             try:
                 response = _mirror_response_from_probe(updated, mr)
             except Exception:
                 # Mirror failed -- fail-open, pass upstream
-                upstream_response = await _forward_upstream(request, upstream, session)
+                upstream_response = await _forward_upstream(
+                    request,
+                    upstream,
+                    session,
+                    timeout=timeout,
+                    semaphore=semaphore,
+                    max_body_bytes=max_body_bytes,
+                )
                 if upstream_response is None:
                     updated["mirror_fired"] = True
                     updated["upstream_passed"] = False
@@ -327,7 +409,14 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
                     updated["upstream_passed"] = True
                     response = upstream_response
         else:
-            upstream_response = await _forward_upstream(request, upstream, session)
+            upstream_response = await _forward_upstream(
+                request,
+                upstream,
+                session,
+                timeout=timeout,
+                semaphore=semaphore,
+                max_body_bytes=max_body_bytes,
+            )
             if upstream_response is None:
                 updated["mirror_fired"] = True
                 updated["upstream_passed"] = False
@@ -350,7 +439,13 @@ async def start_capture_loop(config: OperatorConfig, storage=None) -> None:
     """
     if storage is None:
         from netward.storage import Storage
-        storage = Storage(config.get("storage_path", "netward.db"))
+        storage = Storage(
+            config.get("storage_path", "netward.db"),
+            probe_retention_secs=float(
+                config.get("probe_retention_secs", PROBE_RETENTION_SECS)
+            ),
+            probe_max_rows=int(config.get("probe_max_rows", PROBE_MAX_ROWS)),
+        )
 
     try:
         from netward import bootstrap as _bootstrap
@@ -358,8 +453,10 @@ async def start_capture_loop(config: OperatorConfig, storage=None) -> None:
     except Exception:
         pass  # fail-open: never block startup on seed failure
 
-    connector = aiohttp.TCPConnector()
-    session = aiohttp.ClientSession(connector=connector)
+    timeout = _client_timeout_from_config(config)
+    limit = _max_concurrency_from_config(config)
+    connector = aiohttp.TCPConnector(limit=limit)
+    session = aiohttp.ClientSession(connector=connector, timeout=timeout)
     _proxy_handler = _make_handler(config, storage, session)
 
     @web.middleware

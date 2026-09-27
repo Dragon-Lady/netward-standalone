@@ -12,6 +12,7 @@ Public contract:
     patterns_upsert(pattern: Pattern) -> None
     patterns_purge_expired(now: float) -> int
     probes_log(probe: Probe) -> None
+    probes_purge(now: float | None = None, *, retention_secs=None, max_rows=None) -> int
     probes_recent_for_source(source_id: str, window_secs: int, now: float) -> int
     mirror_response_lookup(response_id: str) -> Optional[MirrorResponse]
     mirror_response_upsert(response: MirrorResponse) -> None
@@ -36,13 +37,17 @@ interface and a swap is mechanical.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import parse_qsl
 
 from .schema import (
+    PROBE_MAX_ROWS,
+    PROBE_RETENTION_SECS,
     SCHEMA_VERSION,
     MeshIntel,
     MirrorResponse,
@@ -51,6 +56,54 @@ from .schema import (
     Probe,
     RequestMetadata,
     Source,
+)
+
+_REDACTED = "[REDACTED]"
+
+_SENSITIVE_HEADER_NAMES = frozenset({
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "cookie2",
+    "set-cookie",
+    "set-cookie2",
+    "x-api-key",
+    "x-auth-token",
+    "x-access-token",
+    "x-csrf-token",
+    "x-xsrf-token",
+    "x-session-token",
+    "api-key",
+    "apikey",
+})
+
+_SENSITIVE_FIELD_NAMES = frozenset({
+    "password",
+    "passwd",
+    "pass",
+    "pwd",
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "access_token",
+    "refresh_token",
+    "authorization",
+    "auth",
+    "client_secret",
+    "session_id",
+    "csrf",
+    "csrf_token",
+})
+
+_UNSTRUCTURED_SECRET_RE = re.compile(
+    r"(?P<key>password|passwd|pass|pwd|secret|token|api[_-]?key|"
+    r"access[_-]?token|refresh[_-]?token|authorization|client[_-]?secret)"
+    r"(?P<sep>\s*[=:]\s*)"
+    r"(?P<quote>[\"']?)"
+    r"(?P<value>[^&\"'\s]+)"
+    r"(?P=quote)",
+    re.IGNORECASE,
 )
 
 
@@ -172,8 +225,16 @@ class StorageError(Exception):
 class Storage:
     """Sqlite-backed Net Ward storage. Open once per process."""
 
-    def __init__(self, db_path: str | Path):
+    def __init__(
+        self,
+        db_path: str | Path,
+        *,
+        probe_retention_secs: float = PROBE_RETENTION_SECS,
+        probe_max_rows: int = PROBE_MAX_ROWS,
+    ):
         self.db_path = str(db_path)
+        self.probe_retention_secs = float(probe_retention_secs)
+        self.probe_max_rows = int(probe_max_rows)
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(
             self.db_path,
@@ -281,6 +342,60 @@ class Storage:
         sql = f"INSERT OR REPLACE INTO probes({','.join(cols)}) VALUES({placeholders})"
         with self._lock:
             self._conn.execute(sql, vals)
+            self._purge_probes_locked(
+                now=time.time(),
+                retention_secs=self.probe_retention_secs,
+                max_rows=self.probe_max_rows,
+            )
+
+    def probes_purge(
+        self,
+        now: float | None = None,
+        *,
+        retention_secs: float | None = None,
+        max_rows: int | None = None,
+    ) -> int:
+        """Drop probes older than TTL and/or over the max-row cap. Newest kept."""
+        with self._lock:
+            return self._purge_probes_locked(
+                now=time.time() if now is None else float(now),
+                retention_secs=(
+                    self.probe_retention_secs
+                    if retention_secs is None
+                    else float(retention_secs)
+                ),
+                max_rows=self.probe_max_rows if max_rows is None else int(max_rows),
+            )
+
+    def _purge_probes_locked(
+        self,
+        now: float,
+        retention_secs: float,
+        max_rows: int,
+    ) -> int:
+        removed = 0
+        if retention_secs > 0:
+            cur = self._conn.execute(
+                "DELETE FROM probes WHERE timestamp < ?",
+                (now - retention_secs,),
+            )
+            removed += int(cur.rowcount or 0)
+        if max_rows > 0:
+            row = self._conn.execute("SELECT COUNT(*) AS c FROM probes").fetchone()
+            extra = int(row["c"] if row else 0) - max_rows
+            if extra > 0:
+                stale = self._conn.execute(
+                    "SELECT id FROM probes ORDER BY timestamp ASC, id ASC LIMIT ?",
+                    (extra,),
+                ).fetchall()
+                ids = [r["id"] for r in stale]
+                if ids:
+                    cur = self._conn.execute(
+                        f"DELETE FROM probes WHERE id IN ({','.join('?' * len(ids))})",
+                        ids,
+                    )
+                    removed += int(cur.rowcount or 0)
+        return removed
 
     def probes_recent_for_source(
         self, source_id: str, window_secs: int, now: float
@@ -439,11 +554,90 @@ def _probe_columns(pr: Probe) -> tuple[list[str], list[Any]]:
         ],
         [
             pr["id"], pr["timestamp"], pr["source_id"], pr.get("pattern_id"),
-            pr["classification"], json.dumps(request),
+            pr["classification"], json.dumps(redact_request_metadata(request)),
             pr.get("response_id"),
             1 if pr.get("mirror_fired") else 0,
             1 if pr.get("upstream_passed") else 0,
         ],
+    )
+
+
+def redact_request_metadata(request: RequestMetadata | dict) -> dict:
+    """Return a persist-safe copy of request metadata. Does not mutate input."""
+    if not isinstance(request, dict):
+        return {}
+    out = dict(request)
+    headers = request.get("headers")
+    if isinstance(headers, dict):
+        out["headers"] = {
+            key: (_REDACTED if _is_sensitive_header(str(key)) else value)
+            for key, value in headers.items()
+        }
+    query = request.get("query_string")
+    if isinstance(query, str) and query:
+        out["query_string"] = _redact_urlencoded(query)
+    body = request.get("body_snippet")
+    if isinstance(body, str) and body:
+        out["body_snippet"] = _redact_body_snippet(body)
+    return out
+
+
+def _is_sensitive_header(name: str) -> bool:
+    lowered = name.lower()
+    if lowered in _SENSITIVE_HEADER_NAMES:
+        return True
+    if "authorization" in lowered or "cookie" in lowered:
+        return True
+    if lowered.endswith("-api-key") or lowered.endswith("-token") or lowered.endswith("-secret"):
+        return True
+    return False
+
+
+def _is_sensitive_field(name: str) -> bool:
+    return name.lower().replace("-", "_") in _SENSITIVE_FIELD_NAMES
+
+
+def _redact_urlencoded(raw: str) -> str:
+    pairs = parse_qsl(raw, keep_blank_values=True)
+    if not pairs and "=" not in raw:
+        return raw
+    return "&".join(
+        f"{key}={_REDACTED if _is_sensitive_field(key) else value}"
+        for key, value in pairs
+    )
+
+
+def _redact_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: (
+                _REDACTED if _is_sensitive_field(str(key)) else _redact_json_value(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_json_value(item) for item in value]
+    return value
+
+
+def _redact_body_snippet(body: str) -> str:
+    stripped = body.lstrip()
+    if stripped[:1] in "{[":
+        try:
+            return json.dumps(
+                _redact_json_value(json.loads(body)),
+                separators=(",", ":"),
+            )
+        except (TypeError, ValueError):
+            pass
+    if "=" in body:
+        redacted = _redact_urlencoded(body)
+        if _REDACTED in redacted or redacted != body:
+            return redacted
+    return _UNSTRUCTURED_SECRET_RE.sub(
+        lambda match: f"{match.group('key')}{match.group('sep')}"
+        f"{match.group('quote')}{_REDACTED}{match.group('quote')}",
+        body,
     )
 
 

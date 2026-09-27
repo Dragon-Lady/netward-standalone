@@ -5,6 +5,27 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+### Security
+
+- Request-path storage reads (`sources_lookup`, `mirror_response_lookup`) now
+  fail-open like classify/mirror. SQLite lock, I/O, or corruption errors no
+  longer abort the handler with 500 and black-hole the host app.
+- Explicit upstream connect, total, and sock-read timeouts, plus a concurrency
+  cap and a buffered-body size cap. Hung or oversized upstreams fail-open to
+  the default mirror instead of pinning workers. Defaults are configurable on
+  `OperatorConfig` / `example_config.json`.
+- Probe-log retention (TTL + max rows) with purge on write. Sensitive headers
+  (`Authorization`, `Cookie`, `Set-Cookie`, and similar) and password-like
+  body/query keys are redacted before persist.
+
+### Changed
+
+- README Safety Model / Privacy language now matches the code: local
+  operator-owned storage may retain redacted metadata; no phone-home;
+  fail-open only. Fail-closed is not implemented.
+- `__init__.py` no longer claims operator-selectable fail-closed, or bounded
+  logs without a purge path.
+
 ## [0.4.7] - 2026-08-30
 
 ### Changed

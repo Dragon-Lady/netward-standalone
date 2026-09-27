@@ -11,7 +11,7 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 ### Why Net Ward
 
 - **Deflects, doesn't fight back.** Bots waste time on convincing-but-harmless mirrors; your upstream never sees the request.
-- **User-space and fail-open.** No kernel modules, no packet tampering. If classification or rendering ever fails, traffic passes straight through to upstream.
+- **User-space and fail-open.** No kernel modules, no packet tampering. If classification, a storage read, or rendering ever fails, traffic passes straight through to upstream (or the default mirror if upstream is down).
 - **Drops in anywhere.** One Python process in front of any HTTP service. Point your load balancer at it and go.
 - **Honest by design.** No telemetry, no harvested credentials, operator owns every byte of local data. Apache-2.0.
 
@@ -61,7 +61,17 @@ Required fields:
 | `upstream_target` | HTTP service being protected |
 | `listen_address` | Host and port Net Ward binds |
 
-Optional fields control mirror intensity, local storage, mesh placeholders, and alert channels. v0.4.1 logs alerts to stdout; external alert delivery is reserved for a later release.
+Optional fields control mirror intensity, local storage, mesh placeholders, alert channels, upstream timeouts, and probe-log retention. v0.4.1 logs alerts to stdout; external alert delivery is reserved for a later release.
+
+| Optional field | Default | Meaning |
+|----------------|---------|---------|
+| `upstream_timeout_total` | `10` | Whole-request budget for the upstream call, in seconds |
+| `upstream_timeout_connect` | `3` | Connect (DNS + TCP + TLS) timeout, in seconds |
+| `upstream_timeout_sock_read` | `5` | Idle time between upstream socket reads, in seconds |
+| `upstream_max_concurrency` | `64` | In-flight upstream requests |
+| `upstream_max_body_bytes` | `8388608` | Max buffered upstream response body (8 MiB). Larger bodies fail-open to the default mirror |
+| `probe_retention_secs` | `604800` | Probe-log TTL (7 days) |
+| `probe_max_rows` | `10000` | Max probe-log rows after purge-on-write |
 
 ---
 
@@ -197,11 +207,14 @@ Net Ward is fail-open and user-space only:
 - No kernel hooks
 - No packet tampering outside normal HTTP responses
 - No hostile payloads
-- No collection of submitted login values
 - No retaliation
-- If classification, storage, or mirror rendering fails, traffic passes to upstream
+- No phone-home and no maintainer telemetry
+- If classification, a storage **read**, or mirror rendering fails, traffic is forwarded to upstream. If upstream is also unreachable, the default mirror is returned. Storage failures must not 500 the request path.
+- Fail-closed (drop traffic when Net Ward cannot classify or store) is **not** implemented.
 
 The mirror layer is meant to deflect automated abuse, not attack it back.
+
+Login values are not a collected product. Sensitive headers (`Authorization`, `Cookie`, `Set-Cookie`, `Proxy-Authorization`, and similar) and password-like body or query keys are redacted before a probe is written to the local database. Residual risk remains: other headers, unstructured bodies, and values that do not use those key names can still be stored locally under the operator's control. Do not treat the probe log as a credential vault, and do not send real secrets in public reports.
 
 ---
 
@@ -212,14 +225,20 @@ operator traffic for any external purpose.
 
 Because Net Ward is a live reverse proxy, it keeps operator-owned local records
 needed to detect and deflect DDoS, probe, and bot activity. Those records may
-include source IPs, timestamps, request paths, selected headers, query strings,
-request sizes, short request-body snippets, classifications, pattern matches,
-and alert metadata in the configured local SQLite database.
+include source IPs, timestamps, request paths, selected (redacted) headers,
+redacted query strings, request sizes, short redacted request-body snippets,
+classifications, pattern matches, and alert metadata in the configured local
+SQLite database.
+
+Probe rows are bounded: older than `probe_retention_secs` or beyond
+`probe_max_rows` are purged on write. That is the "bounded logs" guarantee —
+without those caps the probe table would grow without limit.
 
 That data stays under the operator's control. It is not uploaded, sold, shared,
 or used by the Net Ward project. Its purpose is limited to local attack-point
 detection, abuse-pattern review, alerting, and improving the operator's own
-deflection rules.
+deflection rules. Redaction reduces accidental credential retention; it is not
+a promise that no login-like value can ever appear in a local row.
 
 Do not send real credentials, private customer data, or full traffic captures in
 public issues or support requests. Share sanitized examples only.

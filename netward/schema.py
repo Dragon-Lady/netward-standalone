@@ -355,6 +355,13 @@ class OperatorConfig(TypedDict, total=False):
     alert_email: Optional[str]
     alert_slack_webhook: Optional[str]
     alert_ntfy_topic: Optional[str]
+    upstream_timeout_total: float        # seconds; whole upstream request budget
+    upstream_timeout_connect: float      # seconds; DNS + TCP + TLS
+    upstream_timeout_sock_read: float    # seconds; idle between socket reads
+    upstream_max_concurrency: int        # in-flight upstream requests
+    upstream_max_body_bytes: int         # cap on buffered upstream response body
+    probe_retention_secs: float          # TTL for probes_log rows
+    probe_max_rows: int                  # max probes_log rows after purge
 
 
 # =============================================================================
@@ -380,3 +387,14 @@ ALERT_DEDUP_WINDOW_SECS = 300              # 5 min
 
 # Heartbeat / mesh gossip interval — node publishes status this often.
 HEARTBEAT_INTERVAL_SECS = 60
+
+# Upstream proxy budgets — hung origins must not pin request workers.
+UPSTREAM_TIMEOUT_TOTAL_SECS = 10.0
+UPSTREAM_TIMEOUT_CONNECT_SECS = 3.0
+UPSTREAM_TIMEOUT_SOCK_READ_SECS = 5.0
+UPSTREAM_MAX_CONCURRENCY = 64
+UPSTREAM_MAX_BODY_BYTES = 8 * 1024 * 1024  # 8 MiB
+
+# Probe log retention — probes_log is bounded; purge runs on write.
+PROBE_RETENTION_SECS = 86400 * 7           # 7 days
+PROBE_MAX_ROWS = 10_000
