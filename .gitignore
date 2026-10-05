@@ -35,5 +35,8 @@ tools/red_team/results*/
 # Local sandbox/test scratch
 .codex-pytest*/
 .pytest_tmp*/
+
+# Operator verification runs are local proof, not repository source.
+.cursor/skills/verify-netward/evidence/
 .tmp-pip*/
 .tmp-pip-verify*/

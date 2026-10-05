@@ -180,13 +180,13 @@ challenge, the browser re-prompts, the cycle repeats.
 Enable:
 
 ```bash
-netward --db netward.db enable-pattern basic_auth_probe
+netward-cli --db netward.db enable-pattern basic_auth_probe
 ```
 
 Disable again:
 
 ```bash
-netward --db netward.db disable-pattern basic_auth_probe
+netward-cli --db netward.db disable-pattern basic_auth_probe
 ```
 
 To verify it is working once enabled:
@@ -275,4 +275,4 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes and planned refinements.
 
 ---
 
-*[Net Ward v0.4.1](CHANGELOG.md)*
+*[Net Ward v0.4.8](CHANGELOG.md)*
