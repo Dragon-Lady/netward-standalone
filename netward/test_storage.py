@@ -237,6 +237,38 @@ def test_probe_recent_isolates_by_source(storage):
     assert storage.probes_recent_for_source(src_b, 60, now) == 1
 
 
+def test_probe_log_updates_only_matched_pattern(storage):
+    matched = _make_pattern()
+    other = _make_pattern(signature=r"^/other")
+    storage.patterns_upsert(matched)
+    storage.patterns_upsert(other)
+    first = _make_probe(source_id=str(uuid.uuid4()), ts=1001.0)
+    first["pattern_id"] = matched["id"]
+    second = _make_probe(source_id=str(uuid.uuid4()), ts=1000.0)
+    second["pattern_id"] = matched["id"]
+
+    storage.probes_log(first)
+    storage.probes_log(second)
+
+    patterns = {p["id"]: p for p in storage.patterns_active()}
+    assert patterns[matched["id"]]["match_count"] == 2
+    assert patterns[matched["id"]]["last_matched"] == 1001.0
+    assert patterns[other["id"]]["match_count"] == 0
+    assert patterns[other["id"]]["last_matched"] is None
+
+
+def test_probe_log_without_pattern_does_not_increment_counts(storage):
+    pattern = _make_pattern()
+    storage.patterns_upsert(pattern)
+
+    storage.probes_log(_make_probe(source_id=str(uuid.uuid4())))
+
+    active = storage.patterns_active()
+    assert len(active) == 1
+    assert active[0]["match_count"] == 0
+    assert active[0]["last_matched"] is None
+
+
 def _logged_request(storage, probe_id: str) -> dict:
     row = storage._conn.execute(
         "SELECT request_json FROM probes WHERE id = ?", (probe_id,)

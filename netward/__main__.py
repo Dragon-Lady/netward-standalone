@@ -20,7 +20,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="netward",
         description="Net Ward passive deception proxy",
-        epilog="For pattern management: python netward/cli.py --help",
+        epilog="For pattern management: python -m netward.cli --help (or netward-cli --help)",
     )
     parser.add_argument(
         "--config",

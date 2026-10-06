@@ -5,6 +5,10 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+### Fixed
+
+- Record each matched probe in its pattern's hit count and last matched time.
+
 ## [0.4.8] - 2026-09-27
 
 ### Security

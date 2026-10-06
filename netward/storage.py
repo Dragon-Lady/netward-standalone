@@ -28,7 +28,8 @@ ships the entire base schema as migration 0.
 Hot-path priorities (per placeholder contract):
 - sources_lookup is sub-millisecond — indexed on ip_address
 - patterns_active is cacheable — caller refreshes on intel apply, not per-request
-- probes_log is fire-and-forget — caller schedules via to_thread
+- probes_log is fire-and-forget — caller schedules via to_thread; it also
+  bumps match_count/last_matched on the matched pattern
 
 Backend choice is sqlite3 (stdlib) in the standalone build. Postgres / redis
 adapters remain a later-release concern; preserve this Storage class's
@@ -340,8 +341,15 @@ class Storage:
         cols, vals = _probe_columns(probe)
         placeholders = ",".join(["?"] * len(cols))
         sql = f"INSERT OR REPLACE INTO probes({','.join(cols)}) VALUES({placeholders})"
+        pattern_id = probe.get("pattern_id")
         with self._lock:
             self._conn.execute(sql, vals)
+            if pattern_id:
+                self._conn.execute(
+                    "UPDATE patterns SET match_count = match_count + 1, "
+                    "last_matched = MAX(COALESCE(last_matched, 0), ?) WHERE id = ?",
+                    (float(probe["timestamp"]), pattern_id),
+                )
             self._purge_probes_locked(
                 now=time.time(),
                 retention_secs=self.probe_retention_secs,
