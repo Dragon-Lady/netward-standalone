@@ -5,6 +5,8 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-10-06
+
 ### Added
 
 - `netward-cli report` writes a read-only probe report (text, Markdown,

@@ -288,9 +288,10 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes and planned refinements.
 | `storage.py` | SQLite persistence |
 | `bootstrap.py` | Vendor pattern seeding |
 | `cli.py` | Operator management commands |
+| `report.py` | Read-only probe report |
 | `data/vendor_patterns.json` | Bundled default probe patterns |
 | `operator_layer.py` | Config validation and alert surface |
 
 ---
 
-*[Net Ward v0.4.8](CHANGELOG.md)*
+*[Net Ward v0.4.9](CHANGELOG.md)*
