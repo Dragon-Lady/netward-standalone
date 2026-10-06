@@ -5,6 +5,13 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+### Added
+
+- `netward-cli report` writes a read-only probe report (text, Markdown,
+  HTML, or JSON) with per-family counts, source ranks, weak spots, and an
+  alert summary. Digests use aggregate counts only. `--send` delivers one
+  digest through the configured alert channels.
+
 ### Fixed
 
 - Record each matched probe in its pattern's hit count and last matched time.
