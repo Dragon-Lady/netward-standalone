@@ -491,7 +491,8 @@ h3 {
 
 .section-copy code,
 .limits code,
-.faq code {
+.faq code,
+.capability-grid code {
   padding: 2px 5px;
   color: #684400;
   background: rgba(255, 200, 87, 0.25);
@@ -549,6 +550,7 @@ h3 {
 
 .flow-panel strong { display: block; margin-bottom: 5px; font-size: 18px; }
 .flow-panel p, .posture-grid p, .capability-grid p, .metric-grid p { margin: 0; color: var(--muted); font-size: 14px; }
+.capability-grid p + p { margin-top: 12px; }
 
 .posture-grid {
   display: grid;
@@ -584,7 +586,7 @@ h3 {
 .quickstart .section-copy > p:not(.section-kicker) { color: #adb9c0; }
 .quickstart .section-copy code { color: var(--amber); background: rgba(255, 200, 87, 0.08); }
 
-.code-stack { display: grid; gap: 12px; }
+.code-stack { display: grid; gap: 12px; min-width: 0; }
 
 .code-card { border: 1px solid #46545d; background: #080d12; }
 
@@ -605,6 +607,8 @@ h3 {
   overflow-x: auto;
   color: #e5ebee;
   font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .code-card b { color: var(--amber); }
@@ -623,12 +627,15 @@ h3 {
 
 .capability-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 14px;
 }
 
+.capability-grid article { grid-column: span 2; }
+.capability-grid article:nth-child(n + 4) { grid-column: span 3; }
+
 .capability-grid article {
-  min-height: 286px;
+  min-height: 250px;
   padding: 24px;
   background: var(--panel);
   border: 1px solid #c8c3b9;
@@ -652,6 +659,7 @@ h3 {
 .capability-mark.amber { background: var(--amber); }
 .capability-mark.coral { background: var(--coral); }
 .capability-mark.green { background: var(--green); }
+.capability-mark.ink { color: var(--paper); background: var(--ink); }
 
 .proof { background: var(--paper); }
 .proof-actions { margin-top: 26px; }
@@ -895,6 +903,8 @@ h3 {
 
   .hero-visual { min-height: 500px; }
   .posture-grid, .capability-grid { grid-template-columns: repeat(2, 1fr); }
+  .capability-grid article,
+  .capability-grid article:nth-child(n + 4) { grid-column: auto; }
   .capabilities-heading { grid-template-columns: 1fr; }
 }
 
@@ -912,7 +922,8 @@ h3 {
   .support-options { grid-template-columns: 1fr; }
 
   .posture-grid article { min-height: 210px; }
-  .capability-grid article { min-height: 245px; }
+  .capability-grid article,
+  .capability-grid article:nth-child(n + 4) { grid-column: auto; min-height: 245px; }
 
   .support-band,
   .final-cta,

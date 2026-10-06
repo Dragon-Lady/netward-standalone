@@ -9,14 +9,14 @@
   <meta property="og:url" content="https://dragon-lady.github.io/netward-standalone/">
   <meta property="og:title" content="Net Ward | Make bad traffic take the long way">
   <meta property="og:description" content="Local bot and probe deflection for small HTTP services. User-space, fail-open, and built without retaliation.">
-  <meta property="og:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward.png">
+  <meta property="og:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward.png?v=0.4.9">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Net Ward routing clean traffic to an upstream service and known probes to a harmless mirror">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Net Ward | Local bot and probe deflection">
   <meta name="twitter:description" content="Let clean traffic through. Send known abuse somewhere harmless.">
-  <meta name="twitter:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward.png">
+  <meta name="twitter:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward.png?v=0.4.9">
   <link rel="canonical" href="https://dragon-lady.github.io/netward-standalone/">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
@@ -32,6 +32,7 @@
     </a>
     <nav class="nav-links" aria-label="Primary navigation">
       <a href="#how">How it works</a>
+      <a href="#report">Report</a>
       <a href="#posture">Posture</a>
       <a href="#proof">Proof</a>
       <a href="#limits">Limits</a>
@@ -155,8 +156,9 @@
         <p class="section-kicker">Quick start</p>
         <h2>Put a local ward<br>in front of your app.</h2>
         <p>
-          Install Net Ward, copy the example configuration, and point
+          Install Net Ward, download the example configuration, and point
           <code>upstream_target</code> at the service you want to protect.
+          The example file is not inside the pip package.
         </p>
       </div>
       <div class="code-stack">
@@ -166,8 +168,8 @@
         </div>
         <div class="code-card">
           <span>Configure</span>
-          <pre><code><b>$</b> cp example_config.json config.json
-<b>$</b> $EDITOR config.json</code></pre>
+          <pre><code><b>$</b> curl -O https://raw.githubusercontent.com/Dragon-Lady/netward-standalone/main/example_config.json
+<b>$</b> cp example_config.json config.json && $EDITOR config.json</code></pre>
         </div>
         <div class="code-card">
           <span>Run</span>
@@ -197,7 +199,7 @@
         <article>
           <span class="capability-mark amber" aria-hidden="true">OPS</span>
           <h3>Operator patterns</h3>
-          <p>Add local detection rules, validate them at insertion, and disable patterns that collide with real routes.</p>
+          <p>Inspect the rules with <code>netward-cli list-patterns</code>. Disable a collision with <code>netward-cli disable-pattern &lt;id&gt;</code>.</p>
         </article>
         <article>
           <span class="capability-mark coral" aria-hidden="true">MIR</span>
@@ -209,6 +211,40 @@
           <h3>Load visibility</h3>
           <p>Exercise latency, error rate, and process resource behavior before choosing an operating envelope.</p>
         </article>
+        <article>
+          <span class="capability-mark ink" aria-hidden="true">ALR</span>
+          <h3>Alerts</h3>
+          <p>A pattern match or the start of a flood records a local alert. Matching alerts dedupe for 5 minutes, then deliver to stdout, email, Slack, or ntfy, with retries and receipts.</p>
+          <p>Slack: add <code>slack</code> to <code>alert_channels</code> and set <code>alert_slack_webhook</code>. Keep <code>config.json</code> private.</p>
+          <p>Email needs <code>alert_email</code>, <code>alert_smtp_host</code>, and <code>alert_smtp_from</code>.</p>
+          <p>ntfy needs <code>alert_ntfy_topic</code>.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section quickstart" id="report">
+      <div class="section-copy">
+        <p class="section-kicker">See what hit you</p>
+        <h2>Read the probe log<br>without writing it.</h2>
+        <p>
+          Reports are aggregate counts. They do not print raw addresses.
+          Per-pattern hits are the HITS column from
+          <code>netward-cli --db netward.db list-patterns</code>.
+        </p>
+      </div>
+      <div class="code-stack">
+        <div class="code-card">
+          <span>Markdown</span>
+          <pre><code><b>$</b> netward-cli --db netward.db report --since 7d --format md --output report.md</code></pre>
+        </div>
+        <div class="code-card">
+          <span>HTML</span>
+          <pre><code><b>$</b> netward-cli --db netward.db report --format html --output report.html</code></pre>
+        </div>
+        <div class="code-card">
+          <span>Send</span>
+          <pre><code><b>$</b> netward-cli --db netward.db report --send --config config.json</code></pre>
+        </div>
       </div>
     </section>
 
@@ -250,6 +286,12 @@
           or use it for project telemetry. Operators remain responsible for access controls, retention,
           and handling under their own privacy obligations.
         </p>
+        <p>
+          When alerts are on, each alert carries the source IP, pattern ID, and classification
+          to the channels you chose. Alerts do not include request bodies or headers.
+          Digests are aggregate counts only. Sensitive headers and password fields are
+          redacted before storage.
+        </p>
       </div>
     </section>
 
@@ -264,6 +306,7 @@
         <p><span>03</span> Windows database ACL enforcement is documented but not automatic in v0.4.x.</p>
         <p><span>04</span> Flood context is single-source; coordinated low-rate multi-source detection is future work.</p>
         <p><span>05</span> Continuous heavy-load operators should monitor RSS and restart on their chosen threshold.</p>
+        <p><span>06</span> The probe log keeps 7 days or 10,000 rows. Reports cover that window and say so.</p>
       </div>
     </section>
 
