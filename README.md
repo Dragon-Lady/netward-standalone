@@ -61,7 +61,9 @@ Required fields:
 | `upstream_target` | HTTP service being protected |
 | `listen_address` | Host and port Net Ward binds |
 
-Optional fields control mirror intensity, local storage, mesh placeholders, alert channels, upstream timeouts, and probe-log retention. v0.4.1 logs alerts to stdout; external alert delivery is reserved for a later release.
+Optional fields control mirror intensity, local storage, mesh placeholders, alert channels, upstream timeouts, and probe-log retention. A pattern match or the start of a request flood records an alert in SQLite. Alerts are deduplicated by kind, source, and pattern for five minutes. An empty `alert_channels` list sends to stdout; select any combination of `stdout`, `email`, `slack`, and `ntfy` for explicit delivery. Outbound delivery runs in the background and retries failed channels. Recent undelivered alerts are retried on startup.
+
+Email requires `alert_email`, `alert_smtp_host`, and `alert_smtp_from`. Set `alert_smtp_port` and `alert_smtp_security` (`starttls`, `ssl`, or `none`); `none` is permitted only for a loopback SMTP server. If authentication is needed, set `alert_smtp_username` and `alert_smtp_password_env` to the name of an environment variable containing the password. Slack requires `alert_slack_webhook`. ntfy requires `alert_ntfy_topic` (a topic on ntfy.sh or a full self-hosted topic URL); for a protected topic, set `alert_ntfy_token_env` to the name of an environment variable containing its bearer token. HTTP destinations must use HTTPS except on loopback. `alert_timeout_secs` defaults to five seconds. Net Ward checks requested destinations at startup and stores successful delivery receipts in the alerts table. Alert messages contain the source IP, pattern ID, and classification; they do not include raw request bodies or headers.
 
 | Optional field | Default | Meaning |
 |----------------|---------|---------|
@@ -247,8 +249,6 @@ public issues or support requests. Share sanitized examples only.
 
 ## Known Limitations and Roadmap
 
-- v0.4.1 logs alerts to stdout only. External alert delivery is reserved for a
-  later release.
 - Some pattern kinds are intentionally conservative or deferred. Net Ward favors
   fail-open behavior over blocking uncertain traffic.
 - Mirror responses are only as complete as the installed response set. Operators

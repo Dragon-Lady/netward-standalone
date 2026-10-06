@@ -23,7 +23,7 @@ from __future__ import annotations
 from typing import Literal, Optional, TypedDict
 
 
-SCHEMA_VERSION = 1  # base standalone schema version
+SCHEMA_VERSION = 2  # alert deduplication count
 
 
 # =============================================================================
@@ -316,7 +316,7 @@ class TrustManifest(TypedDict):
 # =============================================================================
 
 OperatorAlertSeverity = Literal["info", "warn", "critical"]
-OperatorAlertChannel = Literal["email", "slack", "webhook", "ntfy", "sms"]
+OperatorAlertChannel = Literal["stdout", "email", "slack", "ntfy"]
 
 
 class OperatorAlert(TypedDict, total=False):
@@ -333,6 +333,7 @@ class OperatorAlert(TypedDict, total=False):
     pattern_id: Optional[str]            # FK -> Pattern if applicable
     triggered_at: float
     delivered_to: list[OperatorAlertChannel]
+    count: int
     acknowledged: bool
     acknowledged_at: Optional[float]
 
@@ -355,6 +356,14 @@ class OperatorConfig(TypedDict, total=False):
     alert_email: Optional[str]
     alert_slack_webhook: Optional[str]
     alert_ntfy_topic: Optional[str]
+    alert_ntfy_token_env: Optional[str]
+    alert_smtp_host: Optional[str]
+    alert_smtp_port: int
+    alert_smtp_from: Optional[str]
+    alert_smtp_username: Optional[str]
+    alert_smtp_password_env: Optional[str]
+    alert_smtp_security: Literal["starttls", "ssl", "none"]
+    alert_timeout_secs: float
     upstream_timeout_total: float        # seconds; whole upstream request budget
     upstream_timeout_connect: float      # seconds; DNS + TCP + TLS
     upstream_timeout_sock_read: float    # seconds; idle between socket reads

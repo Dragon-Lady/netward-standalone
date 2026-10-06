@@ -6,6 +6,7 @@ Mirror and storage layers are stubbed.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from collections import deque
 
@@ -17,6 +18,9 @@ from aiohttp.test_utils import TestClient, TestServer
 import netward.capture as cap_mod
 from netward.capture import _make_handler
 from netward.schema import OperatorConfig
+from netward.storage import Storage
+
+_ALERT_DISPATCHER_KEY = web.AppKey("alert_dispatcher", cap_mod._AlertDispatcher)
 
 
 # ---------------------------------------------------------------------------
@@ -118,9 +122,89 @@ async def _make_client(config: OperatorConfig, storage) -> tuple[TestClient, aio
         return await handler_func(request)
 
     app = web.Application(middlewares=[catch_all])
+    app[_ALERT_DISPATCHER_KEY] = handler_func.alert_dispatcher
     client = TestClient(TestServer(app))
     await client.start_server()
     return client, session
+
+
+@pytest.mark.asyncio
+async def test_matched_requests_record_and_deliver_one_deduplicated_alert(tmp_path):
+    storage = Storage(tmp_path / "alerts.db")
+    storage.patterns_upsert(_wp_admin_pattern())
+    client, session = await _make_client(_config(), storage)
+    try:
+        for _ in range(2):
+            response = await client.get("/wp-admin/")
+            await response.read()
+        for _ in range(50):
+            alerts = storage.alerts_recent(time.time(), 60)
+            if alerts and alerts[0]["delivered_to"]:
+                break
+            await asyncio.sleep(0.02)
+        assert len(alerts) == 1
+        assert alerts[0]["kind"] == "pattern_match"
+        assert alerts[0]["pattern_id"] == "pat-wp-admin"
+        assert alerts[0]["count"] == 2
+        assert alerts[0]["delivered_to"] == ["stdout"]
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+        storage.close()
+
+
+@pytest.mark.asyncio
+async def test_slow_alert_delivery_does_not_hold_proxy_response(tmp_path, monkeypatch):
+    storage = Storage(tmp_path / "slow-alert.db")
+    storage.patterns_upsert(_wp_admin_pattern())
+    entered = threading.Event()
+    release = threading.Event()
+    def slow_delivery(alert, config, channels):
+        entered.set()
+        release.wait(timeout=5)
+        return ["stdout"]
+    monkeypatch.setattr(cap_mod._operator, "deliver_alert", slow_delivery)
+    client, session = await _make_client(_config(), storage)
+    try:
+        response = await asyncio.wait_for(client.get("/wp-admin/"), timeout=1)
+        await response.read()
+        assert response.status in {200, 429, 503}
+        assert await asyncio.to_thread(entered.wait, 1)
+        assert storage.alerts_recent(time.time(), 60)[0]["delivered_to"] == []
+    finally:
+        release.set()
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+        storage.close()
+
+
+@pytest.mark.asyncio
+async def test_flood_threshold_records_critical_alert(tmp_path):
+    storage = Storage(tmp_path / "flood-alert.db")
+    source = {
+        "id": "flood-source", "ip_address": "127.0.0.1", "reputation": "neutral",
+        "first_seen": time.time(), "last_seen": time.time(),
+        "probe_count": 0, "legit_count": 0, "notes": [],
+    }
+    storage.sources_upsert(source)
+    cap_mod._rate_windows[source["id"]] = deque([time.time()] * 999, maxlen=2000)
+    client, session = await _make_client(_config(), storage)
+    try:
+        response = await client.get("/ordinary-path")
+        await response.read()
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        alerts = storage.alerts_recent(time.time(), 60)
+        assert len(alerts) == 1
+        assert alerts[0]["kind"] == "flood_active"
+        assert alerts[0]["severity"] == "critical"
+        assert alerts[0]["pattern_id"] is None
+        assert alerts[0]["delivered_to"] == ["stdout"]
+    finally:
+        await client.close()
+        await session.close()
+        storage.close()
 
 
 # ---------------------------------------------------------------------------

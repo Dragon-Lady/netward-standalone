@@ -216,6 +216,7 @@ CREATE INDEX IF NOT EXISTS idx_alerts_kind_source ON alerts(kind, source_id);
 _MIGRATIONS: list[tuple[int, str]] = [
     (0, _BASE_SCHEMA),
     (1, "ALTER TABLE patterns ADD COLUMN header_name TEXT;"),
+    (2, "ALTER TABLE alerts ADD COLUMN count INTEGER NOT NULL DEFAULT 1;"),
 ]
 
 
@@ -471,6 +472,63 @@ class Storage:
         with self._lock:
             self._conn.execute(sql, vals)
 
+    def alerts_record(self, alert: OperatorAlert, window_secs: float) -> tuple[OperatorAlert, bool]:
+        """Persist an alert or atomically roll it into a recent matching alert.
+
+        Returns the stored alert and whether it is new (and needs delivery).
+        """
+        when = float(alert["triggered_at"])
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM alerts WHERE kind = ? AND source_id IS ? "
+                "AND pattern_id IS ? AND triggered_at BETWEEN ? AND ? "
+                "ORDER BY triggered_at DESC LIMIT 1",
+                (
+                    alert["kind"], alert.get("source_id"), alert.get("pattern_id"),
+                    when - window_secs, when,
+                ),
+            ).fetchone()
+            if row:
+                merged = _row_to_alert(row)
+                merged["count"] = merged.get("count", 1) + 1
+                merged["body"] = alert.get("body", merged.get("body", ""))
+                self._conn.execute(
+                    "UPDATE alerts SET count = ?, body = ? WHERE id = ?",
+                    (merged["count"], merged["body"], merged["id"]),
+                )
+                return merged, False
+
+            cols, vals = _alert_columns(alert)
+            placeholders = ",".join("?" for _ in cols)
+            self._conn.execute(
+                f"INSERT INTO alerts({','.join(cols)}) VALUES({placeholders})", vals
+            )
+            return alert, True
+
+    def alerts_mark_delivered(self, alert_id: str, channels: list[str]) -> None:
+        """Merge successful channel receipts without overwriting a dedup count."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT delivered_to_json FROM alerts WHERE id = ?", (alert_id,)
+            ).fetchone()
+            if row is None:
+                return
+            delivered = list(dict.fromkeys(json.loads(row["delivered_to_json"]) + channels))
+            self._conn.execute(
+                "UPDATE alerts SET delivered_to_json = ? WHERE id = ?",
+                (json.dumps(delivered), alert_id),
+            )
+
+    def alerts_pending(self, channels: list[str], now: float, max_age_secs: float = 604800) -> list[OperatorAlert]:
+        """Recent alerts still missing a receipt for a configured destination."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM alerts WHERE triggered_at >= ? ORDER BY triggered_at",
+                (now - max_age_secs,),
+            ).fetchall()
+        return [alert for row in rows if
+                set(channels) - set((alert := _row_to_alert(row))["delivered_to"])][:100]
+
 
 # =============================================================================
 # Row <-> TypedDict adapters
@@ -705,14 +763,14 @@ def _alert_columns(a: OperatorAlert) -> tuple[list[str], list[Any]]:
         [
             "id", "severity", "kind", "title", "body", "source_id",
             "pattern_id", "triggered_at", "delivered_to_json",
-            "acknowledged", "acknowledged_at",
+            "acknowledged", "acknowledged_at", "count",
         ],
         [
             a["id"], a["severity"], a["kind"], a["title"], a.get("body"),
             a.get("source_id"), a.get("pattern_id"), a["triggered_at"],
             json.dumps(a.get("delivered_to", [])),
             1 if a.get("acknowledged") else 0,
-            a.get("acknowledged_at"),
+            a.get("acknowledged_at"), int(a.get("count", 1)),
         ],
     )
 
@@ -730,5 +788,6 @@ def _row_to_alert(row: sqlite3.Row) -> OperatorAlert:
         "delivered_to": json.loads(row["delivered_to_json"]),
         "acknowledged": bool(row["acknowledged"]),
         "acknowledged_at": row["acknowledged_at"],
+        "count": int(row["count"]),
     }
     return out

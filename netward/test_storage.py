@@ -15,6 +15,7 @@ Coverage:
 from __future__ import annotations
 
 import json
+import sqlite3
 import time
 import uuid
 
@@ -57,6 +58,27 @@ def test_storage_records_schema_version(storage):
     ).fetchone()
     assert row["v"] is not None
     assert row["v"] >= 0
+
+
+def test_existing_v1_alerts_migrate_without_losing_rows(tmp_path):
+    db = tmp_path / "v1.db"
+    with sqlite3.connect(db) as conn:
+        conn.executescript("""
+            CREATE TABLE _schema_version(version INTEGER PRIMARY KEY, applied_at REAL);
+            INSERT INTO _schema_version VALUES (1, 1);
+            CREATE TABLE alerts (
+              id TEXT PRIMARY KEY, severity TEXT NOT NULL, kind TEXT NOT NULL,
+              title TEXT NOT NULL, body TEXT, source_id TEXT, pattern_id TEXT,
+              triggered_at REAL NOT NULL, delivered_to_json TEXT NOT NULL DEFAULT '[]',
+              acknowledged INTEGER NOT NULL DEFAULT 0, acknowledged_at REAL
+            );
+            INSERT INTO alerts(id,severity,kind,title,triggered_at)
+              VALUES ('old-alert','warn','pattern_match','old',1000);
+        """)
+    with Storage(db) as storage:
+        row = storage._conn.execute("SELECT count FROM alerts WHERE id='old-alert'").fetchone()
+        assert row["count"] == 1
+        assert storage._conn.execute("SELECT MAX(version) FROM _schema_version").fetchone()[0] == 2
 
 
 # ----- Source -----
@@ -489,3 +511,32 @@ def test_alert_upsert_idempotent(storage):
     matches = [r for r in recent if r["id"] == a["id"]]
     assert len(matches) == 1
     assert matches[0]["acknowledged"] is True
+
+
+def test_alert_record_deduplicates_and_preserves_receipts(storage):
+    first = _make_alert(kind="pattern_match", source_id="source-1")
+    first["pattern_id"] = "pattern-a"
+    first["triggered_at"] = 1000.0
+    stored, is_new = storage.alerts_record(first, 300)
+    assert is_new and stored["id"] == first["id"]
+    storage.alerts_mark_delivered(first["id"], ["stdout", "slack"])
+    second = dict(first, id=str(uuid.uuid4()), triggered_at=1100.0)
+    merged, is_new = storage.alerts_record(second, 300)
+    assert not is_new and merged["count"] == 2
+    assert merged["triggered_at"] == 1000.0
+    assert merged["delivered_to"] == ["stdout", "slack"]
+    different = dict(second, id=str(uuid.uuid4()), pattern_id="pattern-b")
+    assert storage.alerts_record(different, 300)[1]
+    later = dict(first, id=str(uuid.uuid4()), triggered_at=1301.0)
+    assert storage.alerts_record(later, 300)[1]
+    assert len(storage.alerts_recent(1301.0, 1000)) == 3
+
+
+def test_pending_alerts_only_include_missing_channels(storage):
+    alert = _make_alert(kind="pattern_match", source_id="source-2")
+    storage.alerts_upsert(alert)
+    assert len(storage.alerts_pending(["stdout", "slack"], time.time())) == 1
+    storage.alerts_mark_delivered(alert["id"], ["stdout"])
+    assert len(storage.alerts_pending(["stdout", "slack"], time.time())) == 1
+    storage.alerts_mark_delivered(alert["id"], ["slack"])
+    assert storage.alerts_pending(["stdout", "slack"], time.time()) == []
