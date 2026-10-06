@@ -23,17 +23,27 @@
   "_comment_trust_manifest_url": "Reserved trust manifest URL for mesh deployments. Leave null for standalone mode.",
   "trust_manifest_url": null,
 
-  "_comment_alert_channels": "v0.4.1 logs alerts to stdout. External channels are reserved for a later release.",
+  "_comment_alert_channels": "Empty means stdout. Select any of stdout, email, slack, ntfy. Requested destinations are checked at startup.",
   "alert_channels": [],
 
-  "_comment_alert_email": "Reserved email destination for later alert delivery.",
+  "_comment_alert_email": "Email recipient when email is in alert_channels.",
   "alert_email": null,
 
-  "_comment_alert_slack_webhook": "Reserved Slack webhook URL for later alert delivery.",
+  "alert_smtp_host": null,
+  "alert_smtp_port": 587,
+  "alert_smtp_from": null,
+  "alert_smtp_security": "starttls",
+  "alert_smtp_username": null,
+  "_comment_alert_smtp_password_env": "Name of the environment variable holding the SMTP password; do not put the password in this file.",
+  "alert_smtp_password_env": null,
+
+  "_comment_alert_slack_webhook": "Slack incoming webhook URL when slack is selected. Protect this config file as it contains the webhook secret.",
   "alert_slack_webhook": null,
 
-  "_comment_alert_ntfy_topic": "Reserved ntfy topic for later alert delivery.",
+  "_comment_alert_ntfy_topic": "ntfy.sh topic or full self-hosted topic URL when ntfy is selected.",
   "alert_ntfy_topic": null,
+  "alert_ntfy_token_env": null,
+  "alert_timeout_secs": 5,
 
   "_comment_upstream_timeout_total": "Whole-request budget for the upstream call, in seconds. Hung origins fail-open to the default mirror.",
   "upstream_timeout_total": 10,

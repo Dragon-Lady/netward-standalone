@@ -17,6 +17,7 @@ Public interface:
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from collections import deque
@@ -26,6 +27,7 @@ import aiohttp
 from aiohttp import web
 
 from netward.schema import (
+    ALERT_DEDUP_WINDOW_SECS,
     PROBE_MAX_ROWS,
     PROBE_RETENTION_SECS,
     UPSTREAM_MAX_BODY_BYTES,
@@ -40,6 +42,9 @@ from netward.schema import (
 )
 from netward import classify as _classify_mod
 from netward import mirror as _mirror_mod
+from netward import operator_layer as _operator
+
+_log = logging.getLogger(__name__)
 
 # Body capture cap per schema (RequestMetadata.body_snippet)
 _BODY_SNIPPET_MAX = 4096
@@ -53,6 +58,68 @@ _RATE_WINDOW_SECS: float = 10.0
 # Dict is capped at _RATE_WINDOW_MAX_SOURCES; oldest quarter evicted when full.
 _RATE_WINDOW_MAX_SOURCES = 10_000
 _rate_windows: dict[str, deque] = {}
+
+
+class _AlertDispatcher:
+    """Keep outbound sends out of the proxy response path."""
+
+    def __init__(self, config: OperatorConfig, storage):
+        self.config = config
+        self.storage = storage
+        self.tasks: set[asyncio.Task] = set()
+        self.in_flight: set[str] = set()
+        self.capacity = asyncio.Semaphore(8)
+
+    def submit(self, alert: dict) -> None:
+        if alert["id"] in self.in_flight:
+            return
+        self.in_flight.add(alert["id"])
+        task = asyncio.create_task(self._deliver(alert))
+        self.tasks.add(task)
+        task.add_done_callback(lambda done: self._finished(alert["id"], done))
+
+    def _finished(self, alert_id: str, task: asyncio.Task) -> None:
+        self.tasks.discard(task)
+        self.in_flight.discard(alert_id)
+        if not task.cancelled() and task.exception():
+            _log.error("Net Ward alert %s delivery failed: %s", alert_id,
+                       type(task.exception()).__name__)
+
+    async def _deliver(self, alert: dict) -> None:
+        channels = self.config.get("alert_channels") or ["stdout"]
+        remaining = [c for c in channels if c not in alert.get("delivered_to", [])]
+        async with self.capacity:
+            for attempt in range(3):
+                if not remaining:
+                    break
+                if attempt:
+                    await asyncio.sleep(2 ** (attempt - 1))
+                successful = await asyncio.to_thread(
+                    _operator.deliver_alert, alert, self.config, remaining
+                )
+                if successful:
+                    await asyncio.to_thread(
+                        self.storage.alerts_mark_delivered, alert["id"], successful
+                    )
+                remaining = [c for c in remaining if c not in successful]
+
+    async def close(self) -> None:
+        if self.tasks:
+            await asyncio.gather(*self.tasks, return_exceptions=True)
+
+    async def recover_pending(self) -> None:
+        """Keep retrying recent undelivered alerts while the node is running."""
+        channels = self.config.get("alert_channels") or ["stdout"]
+        while True:
+            try:
+                pending = await asyncio.to_thread(
+                    self.storage.alerts_pending, channels, time.time()
+                )
+                for alert in pending:
+                    self.submit(alert)
+            except Exception as exc:
+                _log.error("Net Ward pending alert recovery failed: %s", type(exc).__name__)
+            await asyncio.sleep(60)
 
 
 def _get_rate_window(source_id: str) -> deque:
@@ -286,6 +353,7 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
     timeout = _client_timeout_from_config(config)
     semaphore = asyncio.Semaphore(_max_concurrency_from_config(config))
     max_body_bytes = _max_body_from_config(config)
+    dispatcher = _AlertDispatcher(config, storage)
 
     # Per-handler pattern cache (closure) so each handler instance starts fresh
     # and tests don't bleed stale cached patterns into each other.
@@ -326,6 +394,7 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
 
         # Rate window update (in-memory, bounded + evicting)
         window = _get_rate_window(source_id)
+        prior_window_count = sum(1 for t in window if now - t <= _RATE_WINDOW_SECS)
         window.append(now)
         rate_window = list(window)
 
@@ -426,8 +495,32 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
                 response = upstream_response
 
         _fire_and_forget(storage, updated)
+        pattern_id = updated.get("pattern_id")
+        flood_started = (classification == "flood" and
+                         prior_window_count < _classify_mod.FLOOD_THRESHOLD)
+        if pattern_id or flood_started:
+            pattern = next((p for p in patterns if p.get("id") == pattern_id), None)
+            alert = {
+                "id": str(uuid.uuid4()),
+                "severity": "critical" if flood_started else (pattern or {}).get("severity", "warn"),
+                "kind": "flood_active" if flood_started else "pattern_match",
+                "title": "Request flood detected" if flood_started else "Probe pattern matched",
+                "body": f"Source {ip}; pattern {pattern_id or 'none'}; classification {classification}",
+                "source_id": source_id,
+                "pattern_id": pattern_id if not flood_started else None,
+                "triggered_at": now,
+                "delivered_to": [],
+                "count": 1,
+            }
+            try:
+                stored, is_new = storage.alerts_record(alert, ALERT_DEDUP_WINDOW_SECS)
+                if is_new:
+                    dispatcher.submit(stored)
+            except Exception as exc:
+                _log.error("Net Ward alert recording failed: %s", type(exc).__name__)
         return response
 
+    handle.alert_dispatcher = dispatcher
     return handle
 
 
@@ -437,6 +530,7 @@ async def start_capture_loop(config: OperatorConfig, storage=None) -> None:
     config["upstream_target"]. Runs until cancelled.
     Fail-open: crashing this process does not harm the upstream service.
     """
+    _operator.validate_alert_config(config)
     if storage is None:
         from netward.storage import Storage
         storage = Storage(
@@ -458,6 +552,7 @@ async def start_capture_loop(config: OperatorConfig, storage=None) -> None:
     connector = aiohttp.TCPConnector(limit=limit)
     session = aiohttp.ClientSession(connector=connector, timeout=timeout)
     _proxy_handler = _make_handler(config, storage, session)
+    recovery_task = asyncio.create_task(_proxy_handler.alert_dispatcher.recover_pending())
 
     @web.middleware
     async def catch_all(request: web.Request, handler) -> web.Response:
@@ -478,5 +573,8 @@ async def start_capture_loop(config: OperatorConfig, storage=None) -> None:
     try:
         await asyncio.Event().wait()
     finally:
+        recovery_task.cancel()
+        await asyncio.gather(recovery_task, return_exceptions=True)
+        await _proxy_handler.alert_dispatcher.close()
         await session.close()
         await runner.cleanup()

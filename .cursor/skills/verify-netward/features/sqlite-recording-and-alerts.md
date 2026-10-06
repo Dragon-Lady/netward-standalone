@@ -1,13 +1,13 @@
 # SQLite recording and alerts
 
-SQLite recording and alerts lets an operator confirm what Net Ward writes to its local DB for a mirrored probe (probe row, source counters, pattern hit counter) and what the alert surface does in this release.
+SQLite recording and alerts lets an operator confirm what Net Ward writes to its local DB for a mirrored probe (probe row, source counters, pattern hit counter, and alert receipt).
 
 ## Sub-features
 
 - `probe-row` a mirrored `/wp-admin/` request is stored with `pattern_id = wordpress_admin_probe`, `classification = probe`, `mirror_fired = 1`, `upstream_passed = 0`.
 - `source-counters` the `127.0.0.1` source row has `probe_count` ≥ 1.
 - `pattern-hits` `list-patterns` HITS for `wordpress_admin_probe` increases by the number of mirrored probes.
-- `alerts-surface` the `alerts` table exists; no runtime path in this release writes or prints alerts (README: v0.4.1+ logs alerts to stdout only, delivery reserved).
+- `alerts-surface` the first match records one alert and sends it to stdout by default; the second match increments its deduplication count.
 
 ## How to get to it (user POV)
 
@@ -24,7 +24,7 @@ Preconditions:
 - **Hits after.** Re-run `list-patterns`. HITS for `wordpress_admin_probe` is `2`.
 - **Probe rows.** `helpers/db-read.sh "SELECT pattern_id, classification, mirror_fired, upstream_passed FROM probes WHERE pattern_id='wordpress_admin_probe'"` → two rows `wordpress_admin_probe|probe|1|0`.
 - **Source row.** `helpers/db-read.sh "SELECT ip_address, probe_count, legit_count FROM sources"` → `127.0.0.1` with `probe_count` ≥ 2.
-- **Alerts.** `helpers/db-read.sh "SELECT COUNT(*) FROM alerts"` → `0`, and `grep -c '\[NETWARD\]' "$NETWARD_VERIFY_STATE_DIR/netward.stdout"` → `0`. Record as "alert delivery not reachable from the operator path in this release", not as verified.
+- **Alerts.** `helpers/db-read.sh "SELECT kind, pattern_id, count, delivered_to_json FROM alerts"` → one `pattern_match` row for `wordpress_admin_probe`, with count `2` and `stdout` in the delivery list. `grep -c '\[NETWARD\]' "$NETWARD_VERIFY_STATE_DIR/netward.stdout"` → at least `1`. Allow a short pause for background delivery.
 - **Proof.** Save CLI outputs, query outputs, stdout grep, and `meta.txt` under `evidence/<RUN_ID>/sqlite-recording-and-alerts/`.
 
 ## Gotchas

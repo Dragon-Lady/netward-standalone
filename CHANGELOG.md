@@ -8,6 +8,8 @@ Format follows Keep a Changelog. Versioning is semver.
 ### Fixed
 
 - Record each matched probe in its pattern's hit count and last matched time.
+- Record pattern and flood alerts, deduplicate them in SQLite, and deliver to
+  configured stdout, email, Slack, and ntfy channels with retries and receipts.
 
 ## [0.4.8] - 2026-09-27
 
