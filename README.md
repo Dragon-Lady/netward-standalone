@@ -147,6 +147,24 @@ List active patterns:
 python -m netward.cli --db netward.db list-patterns
 ```
 
+Read a probe report without writing the database. The report is aggregate
+counts: which probe families fired, where on the site they landed, and how
+many sources were involved. It does not print raw IP addresses or geography.
+Output files are owner-only (`0600`). `--send` delivers that digest once
+through the alert channels in the config file.
+
+```bash
+python -m netward.cli --db netward.db report
+python -m netward.cli --db netward.db report --since 7d --format md --output report.md
+python -m netward.cli --db netward.db report --format html --output report.html
+python -m netward.cli --db netward.db report --family wordpress --top 10
+python -m netward.cli --db netward.db report --send --config config.json
+```
+
+The stored probe log is capped at 7 days or 10,000 rows. A report describes
+that window and says so. Suggested tighter patterns are printed for review
+and are not installed.
+
 Disable or re-enable a pattern:
 
 ```bash

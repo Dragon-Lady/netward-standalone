@@ -56,3 +56,4 @@ Keep implementation details out of the map. Name only operator paths, stable han
 - [Config validation](./config-validation.md) — YAML, non-JSON, missing required fields, and bad `alert_channels` exit 1 before binding.
 - [Flood classification](./flood-classification.md) — >1000 req/10s from one source is labeled `flood` in SQLite but still reaches upstream.
 - [SQLite recording and alerts](./sqlite-recording-and-alerts.md) — probe rows, source counters, and `list-patterns` HITS; alert delivery not reachable in this release.
+- [Probe report](./probe-report.md) — read-only digest of the probe log in Markdown, HTML, and one `--send` delivery.

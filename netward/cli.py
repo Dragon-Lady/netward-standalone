@@ -6,8 +6,12 @@ Usage:
   netward --db PATH list-patterns
   netward --db PATH disable-pattern PATTERN_ID
   netward --db PATH enable-pattern  PATTERN_ID
+  netward --db PATH report [--since 7d] [--until TIME] [--format text|md|html|json]
+                            [--output FILE] [--top N] [--family NAME]
+                            [--send --config config.json]
 
 --db defaults to netward.db in the current directory.
+The report command opens that database read-only.
 """
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ import time
 from netward.storage import Storage
 from netward import bootstrap as _bootstrap
 from netward.regex_policy import PatternPolicyError
+from netward.report import ReportError, run_report
 
 
 def _open_storage(args) -> Storage:
@@ -80,6 +85,28 @@ def _cmd_disable_pattern(args) -> None:
         storage.close()
 
 
+def _cmd_report(args) -> None:
+    try:
+        text = run_report(
+            args.db,
+            since=args.since,
+            until=args.until,
+            fmt=args.format,
+            output=args.output,
+            top=args.top,
+            family=args.family,
+            send=args.send,
+            config=args.config,
+        )
+    except ReportError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if args.output:
+        print(f"Wrote {args.output}")
+    else:
+        sys.stdout.write(text)
+
+
 def _cmd_enable_pattern(args) -> None:
     storage = _open_storage(args)
     try:
@@ -122,6 +149,29 @@ def main(argv: list[str] | None = None) -> None:
     p_enable = sub.add_parser("enable-pattern", help="Re-enable a disabled pattern")
     p_enable.add_argument("pattern_id", help="Pattern ID to enable")
     p_enable.set_defaults(func=_cmd_enable_pattern)
+
+    p_report = sub.add_parser(
+        "report",
+        help="Read-only probe report (counts only; no raw addresses)",
+    )
+    p_report.add_argument("--since", help="Start of the window (7d, 12h, Unix, or ISO-8601)")
+    p_report.add_argument("--until", help="End of the window (duration ago, Unix, or ISO-8601)")
+    p_report.add_argument(
+        "--format",
+        choices=("text", "md", "html", "json"),
+        default="text",
+        help="Report format (default: text)",
+    )
+    p_report.add_argument("--output", metavar="FILE", help="Write the report to FILE (mode 0600)")
+    p_report.add_argument("--top", type=int, default=5, help="How many top paths, methods, and sources to show")
+    p_report.add_argument("--family", help="Limit the attack-surface section to one family")
+    p_report.add_argument(
+        "--send",
+        action="store_true",
+        help="Deliver one digest through the alert channels in --config",
+    )
+    p_report.add_argument("--config", help="Operator config JSON used by --send")
+    p_report.set_defaults(func=_cmd_report)
 
     args = parser.parse_args(argv)
     args.func(args)

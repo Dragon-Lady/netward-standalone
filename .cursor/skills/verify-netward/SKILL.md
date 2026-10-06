@@ -83,6 +83,7 @@ Mapped features (see `features/`):
 | [Config validation](features/config-validation.md) | `timeout 10 python -m netward --config bad.yaml` / missing field / bad `alert_channels` |
 | [Flood classification](features/flood-classification.md) | `curl --parallel … "$NETWARD_VERIFY_LISTEN/flood-[1-1200]"` then `helpers/db-read.sh` |
 | [SQLite recording and alerts](features/sqlite-recording-and-alerts.md) | curl a probe, then `list-patterns` HITS + `helpers/db-read.sh` |
+| [Probe report](features/probe-report.md) | fixed probe mix, two unmatched suspicious paths, one clean request, then `report` |
 
 Exact commands and expected observables live in each feature file. Drive ONE feature per proof run unless asked for a full map pass. In a full pass run `flood-classification` after the other HTTP recipes and `unreachable-upstream-fail-open` last.
 
