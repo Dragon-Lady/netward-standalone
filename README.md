@@ -278,6 +278,17 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes and planned refinements.
 
 ---
 
+## Support
+
+**Net Ward is free and open source, and it stays that way.** Nothing is paywalled and no feature is held back for sponsors.
+
+If Net Ward is saving your service some grief and you'd like to help keep it tested and moving toward v0.5, support is **optional** and always appreciated:
+
+- [GitHub Sponsors](https://github.com/sponsors/Dragon-Lady)
+- [Buy Me a Coffee](https://buymeacoffee.com/dragonladytools)
+
+---
+
 ## Files
 
 | File | Purpose |
