@@ -5,6 +5,18 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-10-15
+
+### Changed
+
+- Use generic test paths and explicitly synthetic credential placeholders in
+  shipped fixtures and decoy responses. This is package hygiene, not a newly
+  discovered live credential or a new traffic-handling feature.
+- Build and scan both release distributions before uploading through PyPI
+  Trusted Publishing. The full scan requires an explicit private-term list.
+- Check that the release tag matches the package version and publish only the
+  scanned build artifacts, with provenance attestations enabled.
+
 ## [0.4.9] - 2026-10-06
 
 ### Added
