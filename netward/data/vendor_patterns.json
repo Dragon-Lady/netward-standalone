@@ -42,10 +42,10 @@
       "headers": {
         "Content-Type": "text/plain; charset=utf-8"
       },
-      "body_template": "[default]\naws_access_key_id = AKIA{{fake_key}}\naws_secret_access_key = {{aws_blob}}\nregion = us-east-1\n",
+      "body_template": "[default]\naws_access_key_id = AKIA{{fake_key}}\naws_secret_access_key = {{example_placeholder_aws}}\nregion = us-east-1\n",
       "body_template_vars": {
         "fake_key": "fake_id",
-        "aws_blob": "fake_token"
+        "example_placeholder_aws": "fake_token"
       },
       "description": "Fake AWS credentials — useless tokens that look like the real shape",
       "created_at": 0

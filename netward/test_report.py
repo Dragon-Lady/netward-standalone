@@ -19,7 +19,7 @@ from netward.report import (
 from netward.storage import Storage
 
 SECRET_IP = "203.0.113.44"
-LEGIT_PATH = "/account/tanya-private-note"
+LEGIT_PATH = "/account/customer-private-note"
 EVIL_PATH = "/wp-admin/<script>alert(1)</script>"
 
 

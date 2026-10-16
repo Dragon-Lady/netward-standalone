@@ -309,6 +309,8 @@ def test_vendor_seed_aws_credentials_probe_fires_fake_aws_mirror(storage):
     # prefix is the literal in the template
     assert "AKIA" in body
     assert "aws_secret_access_key" in body
+    assert "{{" not in body
+    assert "example_placeholder_aws" not in body
     assert out["upstream_served"] == []
 
 
