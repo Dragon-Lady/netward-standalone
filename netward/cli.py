@@ -152,7 +152,7 @@ def main(argv: list[str] | None = None) -> None:
 
     p_report = sub.add_parser(
         "report",
-        help="Read-only probe report (counts only; no raw addresses)",
+        help="Read-only probe report (aggregate counts; no raw IP addresses)",
     )
     p_report.add_argument("--since", help="Start of the window (7d, 12h, Unix, or ISO-8601)")
     p_report.add_argument("--until", help="End of the window (duration ago, Unix, or ISO-8601)")

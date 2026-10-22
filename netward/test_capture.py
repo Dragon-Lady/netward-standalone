@@ -6,6 +6,7 @@ Mirror and storage layers are stubbed.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from collections import deque
@@ -352,6 +353,110 @@ async def test_no_match_routes_upstream(mock_storage):
     finally:
         await client.close()
         await session.close()
+
+
+# ---------------------------------------------------------------------------
+# Fail-open classifier / mirror crashes
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_classifier_crash_fail_opens_and_logs(mock_storage, monkeypatch, caplog):
+    """A classifier exception must still reach upstream and be logged."""
+    served: list[str] = []
+
+    async def upstream_ok(request):
+        served.append(request.path)
+        return web.Response(text="from upstream")
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("classifier exploded")
+
+    monkeypatch.setattr(cap_mod._classify_mod, "classify", boom)
+    caplog.set_level(logging.ERROR, logger="netward.capture")
+
+    runner, port = await _spin_upstream(upstream_ok)
+    try:
+        client, session = await _make_client(
+            _config(upstream=f"http://127.0.0.1:{port}"), mock_storage
+        )
+        try:
+            resp = await client.get("/api/status")
+            assert resp.status == 200
+            assert await resp.text() == "from upstream"
+            assert served == ["/api/status"]
+            assert any(
+                "classifier failed" in rec.getMessage().lower()
+                for rec in caplog.records
+            )
+        finally:
+            await client.close()
+            await session.close()
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_mirror_render_failure_fail_opens_and_logs(mock_storage, monkeypatch, caplog):
+    """A mirror-render exception must still reach upstream and be logged."""
+    served: list[str] = []
+
+    async def upstream_ok(request):
+        served.append(request.path)
+        return web.Response(text="from upstream")
+
+    def boom(_probe, _mr):
+        raise RuntimeError("mirror exploded")
+
+    monkeypatch.setattr("netward.capture._mirror_mod.fire_mirror", boom)
+    mock_storage.patterns = [_wp_admin_pattern()]
+    caplog.set_level(logging.ERROR, logger="netward.capture")
+
+    runner, port = await _spin_upstream(upstream_ok)
+    try:
+        client, session = await _make_client(
+            _config(upstream=f"http://127.0.0.1:{port}"), mock_storage
+        )
+        try:
+            resp = await client.get("/wp-admin/login.php")
+            assert resp.status == 200
+            assert await resp.text() == "from upstream"
+            assert served == ["/wp-admin/login.php"]
+            assert any(
+                "mirror render failed" in rec.getMessage().lower()
+                for rec in caplog.records
+            )
+        finally:
+            await client.close()
+            await session.close()
+    finally:
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_upstream_body_read_failure_fail_opens(mock_storage, monkeypatch):
+    """An unreadable request body must fail open, not 500 the request path."""
+
+    async def boom(self):
+        raise RuntimeError("body unreadable")
+
+    monkeypatch.setattr(web.Request, "read", boom)
+    client, session = await _make_client(
+        _config(upstream="http://127.0.0.1:59993"), mock_storage
+    )
+    try:
+        resp = await client.get("/api/status")
+        assert resp.status != 500
+        assert resp.status in {200, 429, 503}
+    finally:
+        await client.close()
+        await session.close()
+
+
+def test_default_mirror_pick_is_stable():
+    first = cap_mod._select_default_mirror("src-stable", "/healthz")
+    second = cap_mod._select_default_mirror("src-stable", "/healthz")
+    assert first["id"] == second["id"]
+    assert first is cap_mod._select_default_mirror("src-stable", "/healthz")
 
 
 # ---------------------------------------------------------------------------

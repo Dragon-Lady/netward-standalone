@@ -5,6 +5,35 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-10-22
+
+### Security
+
+- Buyer-hygiene private-term checks load from `PUSH_GUARD_BLOCKED_TERMS` or a
+  gitignored local file and skip when neither is set. The live list is no
+  longer stored in source or shipped in the wheel or sdist.
+
+### Added
+
+- Tests that a classifier crash or mirror-render failure still forwards
+  traffic and logs the failure.
+
+### Changed
+
+- CI `actions/checkout` and `actions/setup-python` pins now use the same
+  commit SHAs as the publish workflow.
+- Publish workflow scanner pin is `push-guard==0.4.3`.
+- Default-mirror variant selection uses a stable digest instead of
+  process-local `hash()`.
+- Upstream forwarding reads the request body inside the fail-open path so a
+  bad body cannot 500 the request.
+- Probe-report wording now matches the digest: aggregate path counts, no
+  raw IP addresses.
+
+### Removed
+
+- Internal operator-skill notes from the public tree.
+
 ## [0.4.10] - 2026-10-15
 
 ### Changed

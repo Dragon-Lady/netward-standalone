@@ -17,6 +17,7 @@ Public interface:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
 import uuid
@@ -216,7 +217,8 @@ _DEFAULT_MIRROR_VARIANTS: list[dict] = [
 
 def _select_default_mirror(source_id: str, path: str) -> dict:
     """Deterministic variant per (source_id, path) to prevent shape divergence."""
-    idx = abs(hash(source_id + path)) % len(_DEFAULT_MIRROR_VARIANTS)
+    digest = hashlib.sha256(f"{source_id}\0{path}".encode("utf-8")).digest()
+    idx = int.from_bytes(digest[:8], "big") % len(_DEFAULT_MIRROR_VARIANTS)
     return _DEFAULT_MIRROR_VARIANTS[idx]
 
 
@@ -295,7 +297,6 @@ async def _forward_upstream(
     url = upstream.rstrip("/") + request.path
     if request.query_string:
         url += "?" + request.query_string
-    body = await request.read()
     fwd_headers = {
         k: v for k, v in request.headers.items()
         if k.lower() not in _HOP_BY_HOP and k.lower() != "host"
@@ -303,6 +304,7 @@ async def _forward_upstream(
 
     async def _do() -> Optional[web.Response]:
         try:
+            body = await request.read()
             async with session.request(
                 method=request.method,
                 url=url,
@@ -406,7 +408,8 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
             result = _classify_mod.classify(
                 probe, {"patterns": patterns, "source": source, "rate_window": rate_window}
             )
-        except Exception:
+        except Exception as exc:
+            _log.error("Net Ward classifier failed; failing open: %s", type(exc).__name__)
             probe["classification"] = "unknown"
             upstream_response = await _forward_upstream(
                 request,
@@ -459,8 +462,12 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
             mr = mr or _default_mr
             try:
                 response = _mirror_response_from_probe(updated, mr)
-            except Exception:
+            except Exception as exc:
                 # Mirror failed -- fail-open, pass upstream
+                _log.error(
+                    "Net Ward mirror render failed; failing open: %s",
+                    type(exc).__name__,
+                )
                 upstream_response = await _forward_upstream(
                     request,
                     upstream,

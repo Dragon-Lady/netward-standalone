@@ -1,0 +1,4 @@
+# Hygiene tests load private terms at runtime and must not ship.
+exclude tests/test_buyer_hygiene.py
+exclude netward/test_buyer_hygiene.py
+global-exclude test_buyer_hygiene.py

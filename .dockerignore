@@ -11,6 +11,7 @@ netward/*.db-shm
 netward/*.db-wal
 netward/pytest_tmp*/
 netward/test_*.py
+tests/
 netward/.pytest_cache/
 netward/*.egg-info/
 netward/.coverage

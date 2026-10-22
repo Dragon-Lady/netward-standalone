@@ -12,32 +12,70 @@ Operator-facing: README.md, NOTICE, LICENSE, example_config.json
 Allowed exceptions: data/vendor_patterns.json (deception content; the
 "AKIA" prefix in the AWS fake mirror is intentional bait, not a leak).
 
-Each check fails loudly with the offending file + matched string so
-cleanup is mechanical. Add to the denylist as patterns of leakage are
-discovered in review.
+Private and crew terms are never stored in this repository. Load them at
+test time from PUSH_GUARD_BLOCKED_TERMS or a gitignored local file.
+When neither source is present, those checks skip cleanly.
+
+This module lives outside the installable package so it is not included
+in the wheel or sdist.
 """
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
 
+_THIS_MODULE = sys.modules[__name__]
 
-NETWARD_DIR = Path(__file__).parent
+
+NETWARD_DIR = Path(__file__).resolve().parent.parent / "netward"
 PROJECT_ROOT = NETWARD_DIR.parent
+LOCAL_TERMS_FILE = PROJECT_ROOT / ".push-guard-blocked-terms"
 
 # All .py files under netward/ except __pycache__
 _ALL_PY = [p for p in NETWARD_DIR.rglob("*.py") if "__pycache__" not in p.parts]
 PRODUCTION_PY = [p for p in _ALL_PY if not p.name.startswith("test_")]
-
-# Tests ship with Apache 2.0 source distribution — buyers see them too.
-# This file is the legitimate exception: it contains the denylist itself.
-_HYGIENE_FILE_NAME = "test_buyer_hygiene.py"
-TEST_PY = [p for p in _ALL_PY if p.name.startswith("test_") and p.name != _HYGIENE_FILE_NAME]
+TEST_PY = [p for p in _ALL_PY if p.name.startswith("test_")]
 
 
-def _chars(*codes: int) -> str:
-    return "".join(chr(code) for code in codes)
+def _parse_terms(raw: str) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for line in raw.splitlines():
+        item = line.strip()
+        if not item or item.startswith("#"):
+            continue
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        terms.append(item)
+    return terms
+
+
+def _load_blocked_terms() -> list[str] | None:
+    env = os.environ.get("PUSH_GUARD_BLOCKED_TERMS", "")
+    parsed = _parse_terms(env)
+    if parsed:
+        return parsed
+    if LOCAL_TERMS_FILE.is_file():
+        text = LOCAL_TERMS_FILE.read_text(encoding="utf-8", errors="replace")
+        parsed = _parse_terms(text)
+        if parsed:
+            return parsed
+    return None
+
+
+def _blocked_terms_or_skip() -> list[str]:
+    terms = _load_blocked_terms()
+    if not terms:
+        pytest.skip(
+            "blocked-term list not configured; set PUSH_GUARD_BLOCKED_TERMS "
+            "or provide the gitignored local terms file"
+        )
+    return terms
 
 
 # -----------------------------------------------------------------------------
@@ -52,15 +90,6 @@ PERSONAL_PATH_FRAGMENTS = (
     r"/home/local-user",
 )
 
-# Separate-product references that should not appear in Net Ward source.
-SEPARATE_PRODUCT_REFS = (
-    _chars(100, 114, 97, 103, 111, 110, 32, 101, 121, 101),
-    _chars(100, 114, 97, 103, 111, 110, 101, 121, 101),
-    _chars(97, 100, 115, 98, 120),
-    _chars(97, 100, 115, 98, 101, 120, 99, 104, 97, 110, 103, 101),
-    _chars(97, 100, 115, 98, 46, 108, 111, 108),
-)
-
 # Specific external identifiers that must never leak into Net Ward source.
 SEPARATE_PRODUCT_IDS = (
     "000001",
@@ -70,17 +99,10 @@ SEPARATE_PRODUCT_IDS = (
     "B6DB6D",
 )
 
-# Team / persona names that belong in NOTICE attribution (if anywhere),
-# not in narrative comments or docstrings throughout production source.
-TEAM_NAMES = (
+# Generic placeholders that must not appear as narrative residue.
+GENERIC_TEAM_PLACEHOLDERS = (
     "LocalUser",
-    _chars(82, 111, 99, 107, 121),
-    _chars(71, 111, 108, 100, 119, 105, 110, 103),
-    _chars(70, 105, 100, 103, 101, 116),
-    _chars(77, 121, 116, 104, 111, 115),
 )
-# Some common names/terms are left to manual review because broad substring
-# matching would create noisy false positives in database or prose contexts.
 
 
 def _read_lower(path: Path) -> str:
@@ -89,6 +111,48 @@ def _read_lower(path: Path) -> str:
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _find_blocked_terms(text: str, terms: list[str]) -> list[str]:
+    lowered = text.lower()
+    return [term for term in terms if term.lower() in lowered]
+
+
+# -----------------------------------------------------------------------------
+# Loader
+# -----------------------------------------------------------------------------
+
+def test_blocked_terms_absent_returns_none(monkeypatch, tmp_path):
+    monkeypatch.delenv("PUSH_GUARD_BLOCKED_TERMS", raising=False)
+    monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", tmp_path / "missing-terms")
+    assert _load_blocked_terms() is None
+
+
+def test_blocked_terms_from_env(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "PUSH_GUARD_BLOCKED_TERMS",
+        "# comment\nexample-blocked-term\nexample-blocked-term\nother-example-term\n",
+    )
+    monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", tmp_path / "unused-terms")
+    assert _load_blocked_terms() == ["example-blocked-term", "other-example-term"]
+
+
+def test_blocked_terms_from_local_file(monkeypatch, tmp_path):
+    terms_file = tmp_path / ".push-guard-blocked-terms"
+    terms_file.write_text("# comment\nfile-example-term\n", encoding="utf-8")
+    monkeypatch.delenv("PUSH_GUARD_BLOCKED_TERMS", raising=False)
+    monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", terms_file)
+    assert _load_blocked_terms() == ["file-example-term"]
+
+
+def test_blocked_term_scan_detects_injected_marker(tmp_path, monkeypatch):
+    marker = "nw-hygiene-canary-term"
+    target = tmp_path / "sample.py"
+    target.write_text(f"value = '{marker}'\n", encoding="utf-8")
+    monkeypatch.setenv("PUSH_GUARD_BLOCKED_TERMS", marker)
+    monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", tmp_path / "unused-terms")
+    found = _find_blocked_terms(_read(target), _load_blocked_terms() or [])
+    assert found == [marker]
 
 
 # -----------------------------------------------------------------------------
@@ -106,12 +170,12 @@ def test_no_personal_paths_in_production(py_file):
 
 
 @pytest.mark.parametrize("py_file", PRODUCTION_PY, ids=lambda p: p.name)
-def test_no_separate_product_references_in_production(py_file):
-    text = _read_lower(py_file)
-    found = [ref for ref in SEPARATE_PRODUCT_REFS if ref in text]
+def test_no_blocked_terms_in_production(py_file):
+    terms = _blocked_terms_or_skip()
+    found = _find_blocked_terms(_read(py_file), terms)
     assert not found, (
-        f"{py_file.name} contains separate-product references: {found}. "
-        "Net Ward ships standalone; remove cross-product narrative."
+        f"{py_file.name} contains blocked terms that must not ship. "
+        "Remove the matching private or cross-product wording."
     )
 
 
@@ -126,13 +190,13 @@ def test_no_separate_product_ids_in_production(py_file):
 
 
 @pytest.mark.parametrize("py_file", PRODUCTION_PY, ids=lambda p: p.name)
-def test_no_team_names_in_production(py_file):
+def test_no_team_placeholders_in_production(py_file):
     """Apache 2.0 attribution lives in NOTICE. Production code comments
     should not name individual contributors — that's narrative residue."""
     text = _read(py_file)
-    found = [name for name in TEAM_NAMES if name in text]
+    found = [name for name in GENERIC_TEAM_PLACEHOLDERS if name in text]
     assert not found, (
-        f"{py_file.name} contains team names: {found}. "
+        f"{py_file.name} contains team placeholders: {found}. "
         "Move attribution to NOTICE or remove."
     )
 
@@ -186,8 +250,7 @@ def test_license_is_apache_2_0():
 
 
 # -----------------------------------------------------------------------------
-# Test files — also ship under Apache 2.0 source distribution.
-# Buyers running `pip install -e .` or browsing the repo see them.
+# Test files under netward/ — also scanned when present in the checkout.
 # -----------------------------------------------------------------------------
 
 @pytest.mark.parametrize("py_file", TEST_PY, ids=lambda p: p.name)
@@ -198,10 +261,10 @@ def test_no_personal_paths_in_tests(py_file):
 
 
 @pytest.mark.parametrize("py_file", TEST_PY, ids=lambda p: p.name)
-def test_no_separate_product_references_in_tests(py_file):
-    text = _read_lower(py_file)
-    found = [ref for ref in SEPARATE_PRODUCT_REFS if ref in text]
-    assert not found, f"{py_file.name} references separate product: {found}"
+def test_no_blocked_terms_in_tests(py_file):
+    terms = _blocked_terms_or_skip()
+    found = _find_blocked_terms(_read(py_file), terms)
+    assert not found, f"{py_file.name} contains blocked terms that must not ship."
 
 
 @pytest.mark.parametrize("py_file", TEST_PY, ids=lambda p: p.name)
@@ -212,12 +275,20 @@ def test_no_separate_product_ids_in_tests(py_file):
 
 
 @pytest.mark.parametrize("py_file", TEST_PY, ids=lambda p: p.name)
-def test_no_team_names_in_tests(py_file):
+def test_no_team_placeholders_in_tests(py_file):
     text = _read(py_file)
-    found = [name for name in TEAM_NAMES if name in text]
+    found = [name for name in GENERIC_TEAM_PLACEHOLDERS if name in text]
     assert not found, (
-        f"{py_file.name} contains team names: {found}. "
+        f"{py_file.name} contains team placeholders: {found}. "
         "Test docstrings ship under source distribution; scrub narrative."
+    )
+
+
+def test_no_blocked_terms_in_hygiene_module():
+    terms = _blocked_terms_or_skip()
+    found = _find_blocked_terms(_read(Path(__file__)), terms)
+    assert not found, (
+        "hygiene test contains blocked terms; keep the live list out of source"
     )
 
 
@@ -245,11 +316,11 @@ def test_operator_docs_no_personal_paths(doc):
 
 
 @pytest.mark.parametrize("doc", OPERATOR_FACING, ids=lambda p: p.name)
-def test_operator_docs_no_separate_product_references(doc):
-    text = _read_lower(doc)
-    found = [ref for ref in SEPARATE_PRODUCT_REFS if ref in text]
+def test_operator_docs_no_blocked_terms(doc):
+    terms = _blocked_terms_or_skip()
+    found = _find_blocked_terms(_read(doc), terms)
     assert not found, (
-        f"{doc.name} references a separate product: {found}. "
+        f"{doc.name} contains blocked terms that must not ship. "
         "Net Ward ships standalone."
     )
 
@@ -262,10 +333,10 @@ def test_operator_docs_no_separate_product_ids(doc):
 
 
 @pytest.mark.parametrize("doc", OPERATOR_FACING, ids=lambda p: p.name)
-def test_operator_docs_no_team_names(doc):
+def test_operator_docs_no_team_placeholders(doc):
     text = _read(doc)
-    found = [name for name in TEAM_NAMES if name in text]
+    found = [name for name in GENERIC_TEAM_PLACEHOLDERS if name in text]
     assert not found, (
-        f"{doc.name} contains team names: {found}. "
+        f"{doc.name} contains team placeholders: {found}. "
         "Move attribution to NOTICE if needed."
     )
