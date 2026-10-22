@@ -36,6 +36,12 @@ tools/red_team/results*/
 .codex-pytest*/
 .pytest_tmp*/
 
+# Local operator notes stay off the public tree.
+.cursor/skills/
+
+# Private-term list for local hygiene / package scans. Never commit it.
+.push-guard-blocked-terms
+
 # Operator verification runs are local proof, not repository source.
 .cursor/skills/verify-netward/evidence/
 .tmp-pip*/

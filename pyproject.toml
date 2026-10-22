@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "netward"
-version = "0.4.10"
+version = "0.4.11"
 description = "A user-space deception layer that turns DDoS and bot abuse into wasted effort"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -53,6 +53,10 @@ packages = ["netward"]
 
 [tool.setuptools.package-data]
 "netward" = ["data/*.json"]
+
+# Hygiene tests load private terms at runtime and must not ship.
+[tool.setuptools.exclude-package-data]
+"netward" = ["test_buyer_hygiene.py"]
 
 [tool.pytest.ini_options]
 # Build artifacts (`build/`, `dist/`, `*.egg-info/`) contain duplicate copies

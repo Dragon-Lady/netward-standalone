@@ -74,6 +74,7 @@ Email requires `alert_email`, `alert_smtp_host`, and `alert_smtp_from`. Set `ale
 | `upstream_max_body_bytes` | `8388608` | Max buffered upstream response body (8 MiB). Larger bodies fail-open to the default mirror |
 | `probe_retention_secs` | `604800` | Probe-log TTL (7 days) |
 | `probe_max_rows` | `10000` | Max probe-log rows after purge-on-write |
+| `alert_timeout_secs` | `5` | Per-channel timeout for outbound alert delivery, in seconds |
 
 ---
 
@@ -148,10 +149,10 @@ python -m netward.cli --db netward.db list-patterns
 ```
 
 Read a probe report without writing the database. The report is aggregate
-counts: which probe families fired, where on the site they landed, and how
-many sources were involved. It does not print raw IP addresses or geography.
-Output files are owner-only (`0600`). `--send` delivers that digest once
-through the alert channels in the config file.
+counts: which probe families fired, which request-path totals those families
+hit, and how many sources were involved. It does not print raw IP addresses
+or geography. `--send` delivers that same digest — path counts included,
+never raw IPs. Output files are owner-only (`0600`).
 
 ```bash
 python -m netward.cli --db netward.db report
@@ -305,4 +306,4 @@ If Net Ward is saving your service some grief and you'd like to help keep it tes
 
 ---
 
-*[Net Ward v0.4.10](CHANGELOG.md)*
+*[Net Ward v0.4.11](CHANGELOG.md)*
