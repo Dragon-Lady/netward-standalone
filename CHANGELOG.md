@@ -5,6 +5,12 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+### Fixed
+
+- Buyer-hygiene private-term checks fail when CI requires the list and it
+  is missing, instead of skipping to a green result. Local runs without
+  the list still skip and say why.
+
 ## [0.4.11] - 2026-10-22
 
 ### Security

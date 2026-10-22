@@ -16,6 +16,10 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Fork PRs do not receive secrets. Same-repo PRs and pushes must
+      # have the list; a skip must not go green.
+      PUSH_GUARD_REQUIRE_TERMS: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +29,29 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Fail if the blocked-term list is required and missing
+        if: env.PUSH_GUARD_REQUIRE_TERMS == 'true'
+        env:
+          PUSH_GUARD_BLOCKED_TERMS: ${{ secrets.PUSH_GUARD_BLOCKED_TERMS }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+
+          raw = os.environ.get("PUSH_GUARD_BLOCKED_TERMS", "")
+          has_terms = any(
+              line.strip() and not line.strip().startswith("#")
+              for line in raw.splitlines()
+          )
+          if not has_terms:
+              sys.stderr.write(
+                  "PUSH_GUARD_BLOCKED_TERMS is missing or has no usable terms. "
+                  "Add it as a repository Actions secret so jobs without the "
+                  "pypi environment can read it.\n"
+              )
+              raise SystemExit(1)
+          print("blocked-term list is present")
+          PY
       - name: Install package with dev deps
         run: |
           python -m pip install --upgrade pip
