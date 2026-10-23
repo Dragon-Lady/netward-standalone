@@ -25,9 +25,13 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 ## Quick Start
 
 ```bash
-pip install netward
+python -m pip install --upgrade "netward>=0.4.12"
 python -m netward --config example_config.json
 ```
+
+Version 0.4.12 or newer is the recommended baseline for new installations and
+upgrades. Older releases remain available for reproducibility; new deployments
+should use the current release.
 
 Or from source:
 
