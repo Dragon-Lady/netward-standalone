@@ -14,7 +14,9 @@ Allowed exceptions: data/vendor_patterns.json (deception content; the
 
 Private and crew terms are never stored in this repository. Load them at
 test time from PUSH_GUARD_BLOCKED_TERMS or a gitignored local file.
-When neither source is present, those checks skip cleanly.
+When neither source is present, local runs skip and say why. CI jobs
+that require the list (PUSH_GUARD_REQUIRE_TERMS or CI=true) fail instead
+of skipping to a green result.
 
 This module lives outside the installable package so it is not included
 in the wheel or sdist.
@@ -68,14 +70,37 @@ def _load_blocked_terms() -> list[str] | None:
     return None
 
 
+def _env_flag(name: str) -> bool | None:
+    raw = os.environ.get(name, "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
+def _require_blocked_terms() -> bool:
+    explicit = _env_flag("PUSH_GUARD_REQUIRE_TERMS")
+    if explicit is not None:
+        return explicit
+    return _env_flag("CI") is True
+
+
 def _blocked_terms_or_skip() -> list[str]:
     terms = _load_blocked_terms()
-    if not terms:
-        pytest.skip(
-            "blocked-term list not configured; set PUSH_GUARD_BLOCKED_TERMS "
-            "or provide the gitignored local terms file"
+    if terms:
+        return terms
+    if _require_blocked_terms():
+        pytest.fail(
+            "blocked-term list is required in this environment but was not "
+            "provided. A missing list must not pass. Set "
+            "PUSH_GUARD_BLOCKED_TERMS or provide the gitignored local terms file"
         )
-    return terms
+    pytest.skip(
+        "blocked-term list not configured; skipping private-term checks. "
+        "Set PUSH_GUARD_BLOCKED_TERMS or provide the gitignored local "
+        "terms file to run them"
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -153,6 +178,41 @@ def test_blocked_term_scan_detects_injected_marker(tmp_path, monkeypatch):
     monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", tmp_path / "unused-terms")
     found = _find_blocked_terms(_read(target), _load_blocked_terms() or [])
     assert found == [marker]
+
+
+def test_blocked_terms_skip_when_unconfigured_and_not_required(monkeypatch, tmp_path):
+    monkeypatch.delenv("PUSH_GUARD_BLOCKED_TERMS", raising=False)
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.setenv("PUSH_GUARD_REQUIRE_TERMS", "0")
+    monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", tmp_path / "missing-terms")
+    with pytest.raises(pytest.skip.Exception, match="not configured"):
+        _blocked_terms_or_skip()
+
+
+def test_blocked_terms_fail_when_unconfigured_and_required(monkeypatch, tmp_path):
+    monkeypatch.delenv("PUSH_GUARD_BLOCKED_TERMS", raising=False)
+    monkeypatch.setenv("PUSH_GUARD_REQUIRE_TERMS", "1")
+    monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", tmp_path / "missing-terms")
+    with pytest.raises(pytest.fail.Exception, match="must not pass"):
+        _blocked_terms_or_skip()
+
+
+def test_blocked_terms_required_by_ci_when_flag_unset(monkeypatch, tmp_path):
+    monkeypatch.delenv("PUSH_GUARD_BLOCKED_TERMS", raising=False)
+    monkeypatch.delenv("PUSH_GUARD_REQUIRE_TERMS", raising=False)
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", tmp_path / "missing-terms")
+    with pytest.raises(pytest.fail.Exception, match="must not pass"):
+        _blocked_terms_or_skip()
+
+
+def test_blocked_terms_skip_when_require_flag_false_in_ci(monkeypatch, tmp_path):
+    monkeypatch.delenv("PUSH_GUARD_BLOCKED_TERMS", raising=False)
+    monkeypatch.setenv("CI", "true")
+    monkeypatch.setenv("PUSH_GUARD_REQUIRE_TERMS", "false")
+    monkeypatch.setattr(_THIS_MODULE, "LOCAL_TERMS_FILE", tmp_path / "missing-terms")
+    with pytest.raises(pytest.skip.Exception, match="not configured"):
+        _blocked_terms_or_skip()
 
 
 # -----------------------------------------------------------------------------
