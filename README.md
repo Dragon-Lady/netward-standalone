@@ -306,4 +306,4 @@ If Net Ward is saving your service some grief and you'd like to help keep it tes
 
 ---
 
-*[Net Ward v0.4.11](CHANGELOG.md)*
+*[Net Ward v0.4.12](CHANGELOG.md)*

@@ -5,6 +5,8 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.12] - 2026-10-23
+
 ### Fixed
 
 - Buyer-hygiene private-term checks fail when CI requires the list and it
