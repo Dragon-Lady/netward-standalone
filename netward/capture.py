@@ -46,6 +46,18 @@ from netward import mirror as _mirror_mod
 from netward import operator_layer as _operator
 
 _log = logging.getLogger(__name__)
+_storage_warnings: dict[str, float] = {}
+
+
+def _warn_storage(operation: str, exc: Exception) -> None:
+    """One warning per operation per minute, with no private exception text."""
+    now = time.monotonic()
+    previous = _storage_warnings.get(operation)
+    if previous is None or now - previous >= 60:
+        _storage_warnings[operation] = now
+        _log.warning("Net Ward storage %s failed; continuing degraded: %s",
+                     operation, type(exc).__name__)
+
 
 # Body capture cap per schema (RequestMetadata.body_snippet)
 _BODY_SNIPPET_MAX = 4096
@@ -315,13 +327,20 @@ async def _forward_upstream(
             ) as resp:
                 content = await _read_capped_body(resp, max_body_bytes)
                 if content is None:
+                    _log.warning("Net Ward upstream response exceeded body cap; using default mirror")
                     return None
                 resp_headers = {
                     k: v for k, v in resp.headers.items()
                     if k.lower() not in _HOP_BY_HOP | {"content-encoding"}
                 }
                 return web.Response(status=resp.status, headers=resp_headers, body=content)
-        except Exception:
+        except asyncio.TimeoutError:
+            _log.warning("Net Ward upstream timed out; using default mirror")
+            return None
+        except Exception as exc:
+            # Exception messages can contain credentials, URLs, or request data.
+            _log.warning("Net Ward upstream forwarding failed; using default mirror: %s",
+                         type(exc).__name__)
             return None
 
     if semaphore is None:
@@ -343,11 +362,17 @@ def _fire_and_forget(storage, probe: Probe) -> None:
     """Schedule probe logging without blocking the response path."""
     try:
         loop = asyncio.get_running_loop()
-        loop.create_task(asyncio.to_thread(storage.probes_log, probe))
+        task = loop.create_task(asyncio.to_thread(storage.probes_log, probe))
+        def finished(done):
+            if not done.cancelled():
+                exc = done.exception()  # Retrieve failures instead of leaking task tracebacks.
+                if exc is not None:
+                    _warn_storage("probe log", exc)
+        task.add_done_callback(finished)
     except RuntimeError:
         pass  # no running loop (e.g., during sync tests)
-    except Exception:
-        pass
+    except Exception as exc:
+        _warn_storage("probe log scheduling", exc)
 
 
 def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSession):
@@ -357,19 +382,32 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
     max_body_bytes = _max_body_from_config(config)
     dispatcher = _AlertDispatcher(config, storage)
 
-    # Per-handler pattern cache (closure) so each handler instance starts fresh
-    # and tests don't bleed stale cached patterns into each other.
+    # Read the bundled fallback once. A successful DB read always takes
+    # precedence, including an empty set that reflects intentional disables.
+    try:
+        from netward.bootstrap import load_vendor_data
+        bundle = load_vendor_data()
+    except Exception as exc:
+        _warn_storage("bundled pattern load", exc)
+        bundle = {"patterns": [], "mirror_responses": []}
+    bundled_mirrors = {m["id"]: m for m in bundle["mirror_responses"]}
     _pcache: list = []
     _pcache_at: float = 0.0
+    _pcache_loaded = False
 
     def _get_patterns() -> list:
-        nonlocal _pcache, _pcache_at
-        if time.time() - _pcache_at > _PATTERN_CACHE_TTL:
+        nonlocal _pcache, _pcache_at, _pcache_loaded
+        now = time.time()
+        if not _pcache_loaded or now - _pcache_at > _PATTERN_CACHE_TTL:
             try:
                 _pcache = storage.patterns_active()
-                _pcache_at = time.time()
-            except Exception:
-                pass  # fail-open: return stale cache rather than crashing request path
+            except Exception as exc:
+                _warn_storage("pattern read", exc)
+                if not _pcache_loaded:
+                    _pcache = [p for p in bundle["patterns"]
+                               if p.get("expires_at") is None or p["expires_at"] > now]
+            _pcache_at = now
+            _pcache_loaded = True
         return _pcache
 
     async def handle(request: web.Request) -> web.Response:
@@ -379,11 +417,12 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
         # Source lookup or create — fail-open on storage read errors
         try:
             source = storage.sources_lookup(ip)
-        except Exception:
+        except Exception as exc:
+            _warn_storage("source lookup", exc)
             source = None
         if not source:
             source = {
-                "id": str(uuid.uuid4()),
+                "id": str(uuid.uuid5(uuid.NAMESPACE_URL, "netward-source:" + ip)),
                 "ip_address": ip,
                 "reputation": "neutral",
                 "first_seen": now,
@@ -446,8 +485,8 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
         source = _classify_mod.update_source_reputation(source)
         try:
             storage.sources_upsert(source)
-        except Exception:
-            pass  # fail-open: stale source state is acceptable
+        except Exception as exc:
+            _warn_storage("source write", exc)
 
         # Route
         _default_mr = _select_default_mirror(source_id, request.path)
@@ -457,8 +496,9 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
             if mr_id:
                 try:
                     mr = storage.mirror_response_lookup(mr_id)
-                except Exception:
-                    mr = None
+                except Exception as exc:
+                    _warn_storage("mirror lookup", exc)
+                    mr = bundled_mirrors.get(mr_id)
             mr = mr or _default_mr
             try:
                 response = _mirror_response_from_probe(updated, mr)
@@ -499,6 +539,8 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
                 response = _mirror_response_from_probe(updated, _default_mr)
             else:
                 updated["upstream_passed"] = True
+                if classification == "unknown":
+                    updated["classification"] = "legit"
                 response = upstream_response
 
         _fire_and_forget(storage, updated)
@@ -524,7 +566,7 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
                 if is_new:
                     dispatcher.submit(stored)
             except Exception as exc:
-                _log.error("Net Ward alert recording failed: %s", type(exc).__name__)
+                _warn_storage("alert recording", exc)
         return response
 
     handle.alert_dispatcher = dispatcher
@@ -535,24 +577,35 @@ async def start_capture_loop(config: OperatorConfig, storage=None) -> None:
     """
     Bind to config["listen_address"] and begin proxying to
     config["upstream_target"]. Runs until cancelled.
-    Fail-open: crashing this process does not harm the upstream service.
+    Storage startup failures use read-only or no-persistence mode so the
+    listener still starts; explicit configuration/security checks remain fatal.
     """
     _operator.validate_alert_config(config)
+    owns_storage = storage is None
     if storage is None:
-        from netward.storage import Storage
-        storage = Storage(
-            config.get("storage_path", "netward.db"),
-            probe_retention_secs=float(
-                config.get("probe_retention_secs", PROBE_RETENTION_SECS)
-            ),
-            probe_max_rows=int(config.get("probe_max_rows", PROBE_MAX_ROWS)),
-        )
+        from netward.storage import Storage, UnavailableStorage
+        path = config.get("storage_path", "netward.db")
+        try:
+            storage = Storage(
+                path,
+                probe_retention_secs=float(config.get("probe_retention_secs", PROBE_RETENTION_SECS)),
+                probe_max_rows=int(config.get("probe_max_rows", PROBE_MAX_ROWS)),
+            )
+        except Exception as exc:
+            _warn_storage("startup write access", exc)
+            try:
+                storage = Storage.open_readonly(path)
+                _log.warning("Net Ward started with read-only storage; persistence unavailable")
+            except Exception as read_exc:
+                _warn_storage("startup read access", read_exc)
+                storage = UnavailableStorage()
+                _log.warning("Net Ward started without persistence; using bundled probe defaults")
 
     try:
         from netward import bootstrap as _bootstrap
         _bootstrap.install_vendor_patterns(storage)
-    except Exception:
-        pass  # fail-open: never block startup on seed failure
+    except Exception as exc:
+        _warn_storage("vendor seed", exc)
 
     timeout = _client_timeout_from_config(config)
     limit = _max_concurrency_from_config(config)
@@ -585,3 +638,5 @@ async def start_capture_loop(config: OperatorConfig, storage=None) -> None:
         await _proxy_handler.alert_dispatcher.close()
         await session.close()
         await runner.cleanup()
+        if owns_storage:
+            storage.close()

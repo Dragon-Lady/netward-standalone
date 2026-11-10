@@ -224,6 +224,20 @@ class StorageError(Exception):
     """Raised on storage layer errors that callers should surface."""
 
 
+class UnavailableStorage:
+    """Explicit no-persistence mode; the capture layer owns in-memory defaults."""
+
+    def _unavailable(self, *args, **kwargs):
+        raise StorageError("persistent storage unavailable")
+
+    sources_lookup = sources_upsert = patterns_active = _unavailable
+    patterns_upsert = mirror_response_upsert = mirror_response_lookup = _unavailable
+    probes_log = alerts_record = alerts_pending = alerts_mark_delivered = _unavailable
+
+    def close(self):
+        pass
+
+
 class Storage:
     """Sqlite-backed Net Ward storage. Open once per process."""
 
@@ -243,11 +257,38 @@ class Storage:
             check_same_thread=False,
             isolation_level=None,
         )
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._migrate()
+        try:
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._migrate()
+        except Exception:
+            self._conn.close()
+            raise
+
+    @classmethod
+    def open_readonly(cls, db_path: str | Path):
+        """Preserve readable operator patterns when writable startup fails.
+
+        No migration, journal-mode change, file creation, or writable fallback.
+        An empty pattern store cannot provide the bundled cold-start defaults.
+        """
+        obj = cls.__new__(cls)
+        obj.db_path = str(db_path)
+        obj.probe_retention_secs = float(PROBE_RETENTION_SECS)
+        obj.probe_max_rows = int(PROBE_MAX_ROWS)
+        obj._lock = threading.Lock()
+        obj._conn = sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro",
+                                   uri=True, check_same_thread=False, isolation_level=None)
+        try:
+            obj._conn.row_factory = sqlite3.Row
+            if obj._conn.execute("SELECT 1 FROM patterns LIMIT 1").fetchone() is None:
+                raise StorageError("no stored patterns available")
+        except Exception:
+            obj._conn.close()
+            raise
+        return obj
 
     def close(self) -> None:
         with self._lock:

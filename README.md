@@ -11,7 +11,7 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 ### Why Net Ward
 
 - **Deflects, doesn't fight back.** Bots waste time on convincing-but-harmless mirrors; your upstream never sees the request.
-- **User-space and fail-open.** No kernel modules, no packet tampering. If classification, a storage read, or rendering ever fails, traffic passes straight through to upstream (or the default mirror if upstream is down).
+- **User-space and fail-open.** No kernel modules, no packet tampering. If classification or rendering fails, traffic passes through to upstream (or the default mirror if upstream is down). Storage failures use readable, cached, or bundled patterns while keeping the listener available.
 - **Drops in anywhere.** One Python process in front of any HTTP service. Point your load balancer at it and go.
 - **Honest by design.** No telemetry, no harvested credentials, operator owns every byte of local data. Apache-2.0.
 
@@ -26,7 +26,17 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 
 ```bash
 python -m pip install --upgrade "netward>=0.4.12"
-python -m netward --config example_config.json
+# Create config.json in a directory owned by your user (not directly in /tmp).
+cat > config.json <<'JSON'
+{
+  "node_id": "netward-local",
+  "upstream_target": "http://127.0.0.1:9000",
+  "listen_address": "127.0.0.1:8080",
+  "storage_path": "netward.db"
+}
+JSON
+# Edit upstream_target to point at your running app before starting.
+python -m netward --config config.json
 ```
 
 Version 0.4.12 or newer is the recommended baseline for new installations and
@@ -47,7 +57,9 @@ Net Ward listens on `listen_address` and forwards clean traffic to `upstream_tar
 
 ## Configuration
 
-Copy the example config and edit the upstream target:
+For a PyPI installation, use the minimal `config.json` above. The full
+`example_config.json` is a repository file, not an installed wheel resource.
+From a source checkout, copy it and edit the upstream target:
 
 ```bash
 cp example_config.json config.json
@@ -75,7 +87,7 @@ Email requires `alert_email`, `alert_smtp_host`, and `alert_smtp_from`. Set `ale
 | `upstream_timeout_connect` | `3` | Connect (DNS + TCP + TLS) timeout, in seconds |
 | `upstream_timeout_sock_read` | `5` | Idle time between upstream socket reads, in seconds |
 | `upstream_max_concurrency` | `64` | In-flight upstream requests |
-| `upstream_max_body_bytes` | `8388608` | Max buffered upstream response body (8 MiB). Larger bodies fail-open to the default mirror |
+| `upstream_max_body_bytes` | `8388608` | Max buffered upstream response body (8 MiB). Larger bodies return the default mirror |
 | `probe_retention_secs` | `604800` | Probe-log TTL (7 days) |
 | `probe_max_rows` | `10000` | Max probe-log rows after purge-on-write |
 | `alert_timeout_secs` | `5` | Per-channel timeout for outbound alert delivery, in seconds |
@@ -120,7 +132,77 @@ Known probe should be mirrored:
 curl -i http://127.0.0.1:8080/wp-admin/
 ```
 
-The WordPress probe returns a fake login page. The upstream service does not receive the request.
+The WordPress probe returns a fake login page for `/wp-admin`, `/wp-admin/`
+and its subpaths (such as `/wp-admin/login.php`), plus `/wp-login.php`.
+Matching ignores case and does not include lookalikes such as `/wp-administer`.
+When rendering succeeds, the upstream service does not receive the request.
+
+**Before protecting a real admin panel:** disable `generic_admin_login_probe`
+if your app uses `/admin` or `/admin/login`; disable `wordpress_admin_probe`
+if it serves the WordPress admin paths. See [Operator Commands](#operator-commands).
+A mirror-rendering error instead fails open to upstream and is logged at ERROR.
+
+### When upstream is unavailable
+
+Inspection failure and an unavailable upstream are different cases:
+
+- **Fail-open:** classification or mirror-rendering failures allow forwarding
+  to upstream. If a matched probe's mirror cannot render, that request also
+  forwards to upstream; the rendering error is logged at ERROR. Storage-write
+  failures must not prevent an otherwise successful response.
+- **Default mirror:** if upstream is dead, times out, or sends a response over
+  the configured body cap, Net Ward serves a decoy instead of a raw proxy 502.
+  This is the 0.4.1 **502-oracle fix**: returning a raw 502 only for clean paths
+  would reveal which paths are mirrored. It does not keep the real app online.
+
+There are five default variants, selected by a stable digest of the source ID
+and path. The same source ID and path get the same variant; generated fields
+inside the body can vary. When source lookup is unavailable, a deterministic
+per-client fallback ID keeps repeated requests stable. Switching between an
+older stored ID and the fallback ID can change the variant once.
+
+| Status | Default response |
+|--------|------------------|
+| 200 | JSON status with an ID and timestamp |
+| 429 | JSON rate-limit response with `Retry-After: 30` |
+| 503 | HTML Service Unavailable page |
+| 200 | JSON with `data: null` and `next: null` |
+| 200 | Plain-text `OK` |
+
+Thus `curl -i http://127.0.0.1:8080/healthz` may return 200, 429, or 503 during
+an upstream outage. A 429 or 503 on a clean path is an intentional decoy, not
+proof that fail-open broke. No particular path is guaranteed a particular status.
+Default timeouts are 3 seconds to connect, 5 seconds between socket reads,
+and 10 seconds total. Forwarding exceptions, timeouts, and body-cap fallbacks
+are logged at WARNING without upstream URLs, request data, or exception messages.
+
+### When storage is unavailable
+
+If writable SQLite startup fails, Net Ward logs a warning and still starts
+serving. It first tries the existing database read-only, preserving readable
+operator patterns and disables. If that is unavailable, corrupt, or has no
+patterns, it runs without persistence using the bundled probe patterns and
+mirror bodies in memory. It does not create a replacement database elsewhere.
+
+At runtime, a failed pattern refresh preserves the last successfully read
+pattern set, including an intentionally empty one. With no successful read,
+bundled defaults cover the first request too. A failed vendor mirror lookup
+can use its bundled body. Unmatched requests continue to the real app.
+
+**Limits:** when both storage and its cached configuration are unavailable,
+custom patterns and intentional disables cannot be recovered; bundled defaults
+may mirror paths your real app uses. Reports, counters, durable alert queues,
+and delivery receipts are not reliable without writable storage. Warnings name
+the failing operation and exception class, never the private exception message,
+and repeat at most once per minute per storage operation. Restore database
+access and restart to leave a read-only/no-persistence startup mode. Malformed
+configuration and the explicit world-writable-path security check still refuse
+startup.
+
+For testing, changing mode bits on an already-open Linux database may not stop
+writes through existing descriptors. Use a fresh process with a read-only file
+and directory, or inject an actual storage error in an isolated test. Do not
+fault a production database to test this behavior.
 
 ### Happy-path example
 
@@ -146,6 +228,13 @@ python -m netward.cli --db netward.db install-patterns
 python -m netward.cli --db netward.db install-patterns --force
 ```
 
+Existing databases keep their installed vendor patterns across upgrades. To
+adopt the expanded WordPress subpath match, review the bundled patterns and
+refresh them with `--force`, then restart the proxy to refresh its cache. A
+forced refresh replaces vendor definitions and their enabled/disabled state;
+reapply intentional disables before restarting. Operator-origin patterns with
+distinct IDs remain separate.
+
 List active patterns:
 
 ```bash
@@ -165,6 +254,11 @@ python -m netward.cli --db netward.db report --format html --output report.html
 python -m netward.cli --db netward.db report --family wordpress --top 10
 python -m netward.cli --db netward.db report --send --config config.json
 ```
+
+“Clean pass-through events” counts unmatched, non-flood requests that received
+an upstream response, including older rows labeled `unknown`. It describes
+routing, not a guarantee that the traffic is safe. Outage mirrors and matched
+probes forwarded after rendering errors do not count as clean pass-throughs.
 
 The stored probe log is capped at 7 days or 10,000 rows. A report describes
 that window and says so. Suggested tighter patterns are printed for review
@@ -234,7 +328,7 @@ Net Ward is fail-open and user-space only:
 - No hostile payloads
 - No retaliation
 - No phone-home and no maintainer telemetry
-- If classification, a storage **read**, or mirror rendering fails, traffic is forwarded to upstream. If upstream is also unreachable, the default mirror is returned. Storage failures must not 500 the request path.
+- If classification or mirror rendering fails, traffic is forwarded to upstream. If upstream is also unreachable, the default mirror is returned. Storage failures keep serving with readable, cached, or bundled patterns as described above; recording a request must not block its response.
 - Fail-closed (drop traffic when Net Ward cannot classify or store) is **not** implemented.
 
 The mirror layer is meant to deflect automated abuse, not attack it back.

@@ -45,7 +45,7 @@
   "alert_ntfy_token_env": null,
   "alert_timeout_secs": 5,
 
-  "_comment_upstream_timeout_total": "Whole-request budget for the upstream call, in seconds. Hung origins fail-open to the default mirror.",
+  "_comment_upstream_timeout_total": "Whole-request budget for the upstream call, in seconds. Hung origins return the default mirror.",
   "upstream_timeout_total": 10,
 
   "_comment_upstream_timeout_connect": "Connect timeout (DNS + TCP + TLS) in seconds.",
@@ -57,7 +57,7 @@
   "_comment_upstream_max_concurrency": "Maximum in-flight upstream requests.",
   "upstream_max_concurrency": 64,
 
-  "_comment_upstream_max_body_bytes": "Max buffered upstream response body in bytes (default 8 MiB). Larger bodies fail-open to the default mirror.",
+  "_comment_upstream_max_body_bytes": "Max buffered upstream response body in bytes (default 8 MiB). Larger bodies return the default mirror.",
   "upstream_max_body_bytes": 8388608,
 
   "_comment_probe_retention_secs": "Probe-log TTL in seconds (default 7 days). Older rows are purged on write.",

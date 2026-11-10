@@ -268,7 +268,7 @@
     {
       "id": "wordpress_admin_probe",
       "kind": "path",
-      "signature": "^/(wp-admin/?|wp-login\\.php)(\\?.*)?$",
+      "signature": "^/(wp-admin(?:/[^?]*)?|wp-login\\.php)(\\?.*)?$",
       "description": "WordPress admin/login probe",
       "severity": "warn",
       "origin": "vendor",

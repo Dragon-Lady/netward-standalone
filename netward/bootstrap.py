@@ -26,6 +26,27 @@ class BootstrapError(Exception):
     pass
 
 
+def load_vendor_data(_data_path: Optional[Path] = None) -> dict:
+    """Read bundled patterns and mirror bodies without depending on storage."""
+    data_path = _data_path or _VENDOR_DATA_PATH
+    try:
+        raw = Path(data_path).read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise BootstrapError(f"vendor_patterns.json is invalid JSON: {exc}") from exc
+    except OSError as exc:
+        raise BootstrapError(f"cannot read vendor_patterns.json: {exc}") from exc
+
+    mirrors = data.get("mirror_responses", [])
+    patterns = data.get("patterns", [])
+    if not isinstance(mirrors, list) or not isinstance(patterns, list):
+        raise BootstrapError(
+            "vendor_patterns.json must have 'mirror_responses' and 'patterns' arrays"
+        )
+
+    return {"mirror_responses": mirrors, "patterns": patterns}
+
+
 def install_vendor_patterns(
     storage,
     force: bool = False,
@@ -49,22 +70,8 @@ def install_vendor_patterns(
         except Exception:
             pass  # storage errors fall through to a fresh install attempt
 
-    # Validate JSON before touching storage
-    data_path = _data_path or _VENDOR_DATA_PATH
-    try:
-        raw = Path(data_path).read_text(encoding="utf-8")
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise BootstrapError(f"vendor_patterns.json is invalid JSON: {exc}") from exc
-    except OSError as exc:
-        raise BootstrapError(f"cannot read vendor_patterns.json: {exc}") from exc
-
-    mirrors = data.get("mirror_responses", [])
-    patterns = data.get("patterns", [])
-    if not isinstance(mirrors, list) or not isinstance(patterns, list):
-        raise BootstrapError(
-            "vendor_patterns.json must have 'mirror_responses' and 'patterns' arrays"
-        )
+    data = load_vendor_data(_data_path)
+    mirrors, patterns = data["mirror_responses"], data["patterns"]
 
     now = time.time()
 

@@ -5,6 +5,30 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+### Fixed
+
+- Start serving even when writable SQLite initialization fails, preserving
+  readable operator patterns or using bundled defaults without persistence.
+- Keep bundled probe patterns available before a first storage read succeeds,
+  preserve a warm pattern cache, and use stable fallback source IDs.
+- Retrieve background probe-log errors and warn once per storage operation per
+  minute, without private exception details.
+- Record successful unmatched forwards as `legit` and include older successful
+  `unknown` rows in clean pass-through report counts. Failed attempts, mirrors,
+  matched probes, and floods are excluded.
+- Match WordPress admin subpaths in the bundled vendor pattern, without
+  matching lookalike prefixes. Existing databases need an explicit pattern refresh.
+- Log upstream exceptions, timeouts, and oversized responses at warning level
+  without exposing request or upstream details.
+- Make the PyPI Quick Start self-contained instead of requiring a repository-only
+  example config.
+
+### Documentation
+
+- Explain all five outage-decoy variants, their 200/429/503 statuses and stable
+  selection, separately from fail-open behavior on inspection/rendering errors.
+- Highlight intentional admin-path exclusions and mirror-rendering fallback.
+
 ## [0.4.12] - 2026-10-23
 
 ### Fixed
