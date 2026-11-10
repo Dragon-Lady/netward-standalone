@@ -180,9 +180,17 @@ are logged at WARNING without upstream URLs, request data, or exception messages
 
 If writable SQLite startup fails, Net Ward logs a warning and still starts
 serving. It first tries the existing database read-only, preserving readable
-operator patterns and disables. If that is unavailable, corrupt, or has no
-patterns, it runs without persistence using the bundled probe patterns and
-mirror bodies in memory. It does not create a replacement database elsewhere.
+operator patterns and disables. When a checkpointed WAL database cannot be
+read without creating sidecars, it uses a private read-only snapshot after
+checking that the source stayed unchanged and has no WAL, shared-memory, or
+rollback-journal files. A normal SQLite reader handles existing WAL files so
+committed policy changes in the WAL are retained; the snapshot fallback never
+ignores them. Snapshot policy stays fixed until restart. If neither read path
+is available, the database is corrupt, or it has no patterns, it runs without
+persistence using the bundled probe patterns and mirror bodies in memory.
+The temporary snapshot is used only for reads and removed on clean shutdown;
+it is not a replacement writable database. Abrupt termination can leave the
+private temporary directory behind.
 
 At runtime, a failed pattern refresh preserves the last successfully read
 pattern set, including an intentionally empty one. With no successful read,
