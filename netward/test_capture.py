@@ -92,6 +92,7 @@ def _wp_admin_pattern() -> dict:
 def clear_module_state():
     """Reset module-level rate windows between tests."""
     cap_mod._rate_windows.clear()
+    cap_mod._storage_warnings.clear()
     yield
     cap_mod._rate_windows.clear()
 
@@ -433,11 +434,11 @@ async def test_mirror_render_failure_fail_opens_and_logs(mock_storage, monkeypat
 
 
 @pytest.mark.asyncio
-async def test_upstream_body_read_failure_fail_opens(mock_storage, monkeypatch):
+async def test_upstream_body_read_failure_fail_opens(mock_storage, monkeypatch, caplog):
     """An unreadable request body must fail open, not 500 the request path."""
 
     async def boom(self):
-        raise RuntimeError("body unreadable")
+        raise RuntimeError("private-upstream.example?token=synthetic-sensitive-value")
 
     monkeypatch.setattr(web.Request, "read", boom)
     client, session = await _make_client(
@@ -447,6 +448,11 @@ async def test_upstream_body_read_failure_fail_opens(mock_storage, monkeypatch):
         resp = await client.get("/api/status")
         assert resp.status != 500
         assert resp.status in {200, 429, 503}
+        body = await resp.text()
+        assert "upstream forwarding failed" in caplog.text
+        assert "RuntimeError" in caplog.text
+        for secret in ("private-upstream.example", "synthetic-sensitive-value"):
+            assert secret not in caplog.text and secret not in body
     finally:
         await client.close()
         await session.close()
@@ -567,7 +573,7 @@ async def _spin_upstream(handler) -> tuple[web.AppRunner, int]:
 
 
 @pytest.mark.asyncio
-async def test_upstream_timeout_fail_opens_to_default_mirror(mock_storage):
+async def test_upstream_timeout_fail_opens_to_default_mirror(mock_storage, caplog):
     """Hung upstream must not pin the worker; request fail-opens to default mirror."""
 
     async def slow(request):
@@ -589,6 +595,8 @@ async def test_upstream_timeout_fail_opens_to_default_mirror(mock_storage):
             assert resp.status != 500
             assert resp.status in {200, 429, 503}
             assert "too late" not in await resp.text()
+            assert "upstream timed out" in caplog.text
+            assert any(r.levelno == logging.WARNING for r in caplog.records)
         finally:
             await client.close()
             await session.close()
@@ -642,7 +650,7 @@ async def test_upstream_concurrency_cap_serializes_in_flight(mock_storage):
 
 
 @pytest.mark.asyncio
-async def test_upstream_body_over_cap_fail_opens_to_default_mirror(mock_storage):
+async def test_upstream_body_over_cap_fail_opens_to_default_mirror(mock_storage, caplog):
     """Oversized upstream bodies are not fully buffered; request fail-opens."""
 
     async def fat(request):
@@ -658,9 +666,142 @@ async def test_upstream_body_over_cap_fail_opens_to_default_mirror(mock_storage)
             assert resp.status != 500
             body = await resp.text()
             assert "X" * 64 not in body
+            assert "upstream response exceeded body cap" in caplog.text
             assert resp.status in {200, 429, 503}
         finally:
             await client.close()
             await session.close()
     finally:
         await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_clean_requests_reach_upstream_and_reports_count_them(tmp_path):
+    from netward.report import build_report, render
+    import sqlite3
+    served = []
+    async def upstream_ok(request):
+        served.append(request.path)
+        return web.Response(text="upstream response")
+    db = tmp_path / "routing.db"
+    storage = Storage(db)
+    runner, port = await _spin_upstream(upstream_ok)
+    client, session = await _make_client(_config(f"http://127.0.0.1:{port}"), storage)
+    try:
+        for path in ("/", "/healthz", "/api/status"):
+            response = await client.get(path)
+            assert await response.text() == "upstream response"
+        for _ in range(100):
+            report = build_report(str(db))
+            if report["verdict"]["rows_in_window"] == 3:
+                break
+            await asyncio.sleep(0.01)
+        assert served == ["/", "/healthz", "/api/status"]
+        assert report["verdict"]["clean_events"] == 3
+        with sqlite3.connect(db) as conn:
+            assert conn.execute("SELECT classification, upstream_passed, mirror_fired FROM probes").fetchall() == [("legit", 1, 0)] * 3
+        for fmt in ("text", "md"):
+            assert "Clean pass-through events: 3" in render(report, fmt)
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+        await runner.cleanup()
+        storage.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path,mirrored", [
+    ("/wp-admin", True), ("/wp-admin/", True),
+    ("/wp-admin/login.php", True), ("/WP-ADMIN/css/login.css?ver=1", True),
+    ("/wp-login.php?next=home", True), ("/wp-administer", False),
+    ("/wp-admin-backup", False), ("/wp-login.php.bak", False),
+])
+async def test_bundled_wordpress_subpaths_route_without_prefix_overmatch(path, mirrored, mock_storage):
+    import json
+    from netward.bootstrap import _VENDOR_DATA_PATH
+    bundle = json.loads(_VENDOR_DATA_PATH.read_text())
+    pattern = next(p for p in bundle["patterns"] if p["id"] == "wordpress_admin_probe")
+    mock_storage.patterns = [pattern]
+    mock_storage.mirror_responses = {m["id"]: m for m in bundle["mirror_responses"]}
+    served = []
+    async def upstream_ok(request):
+        served.append(request.path)
+        return web.Response(text="upstream response")
+    runner, port = await _spin_upstream(upstream_ok)
+    client, session = await _make_client(_config(f"http://127.0.0.1:{port}"), mock_storage)
+    try:
+        response = await client.get(path)
+        body = await response.text()
+        assert (body != "upstream response") == mirrored
+        assert bool(served) == (not mirrored)
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_cold_storage_failure_uses_vendor_patterns_and_stable_source_ids(monkeypatch, caplog):
+    from netward.storage import UnavailableStorage
+    seen = []
+    select = cap_mod._select_default_mirror
+    def record(source_id, path):
+        seen.append(source_id)
+        return select(source_id, path)
+    monkeypatch.setattr(cap_mod, "_select_default_mirror", record)
+    client, session = await _make_client(_config(), UnavailableStorage())
+    try:
+        for _ in range(3):
+            response = await client.get("/.env")
+            body = await response.text()
+            assert response.status == 200
+            assert "APP_ENV=production" in body
+        assert len(set(seen)) == 1
+        await asyncio.sleep(0.05)
+        messages = [rec.getMessage() for rec in caplog.records]
+        for operation in ("pattern read", "source lookup", "source write", "mirror lookup", "probe log"):
+            assert sum("storage " + operation + " failed" in msg for msg in messages) == 1
+        assert "Task exception was never retrieved" not in caplog.text
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_preserves_known_empty_pattern_set(mock_storage, monkeypatch):
+    # A successful empty DB read means all patterns may intentionally be disabled.
+    client, session = await _make_client(_config(), mock_storage)
+    try:
+        response = await client.get("/.env")
+        await response.read()
+        def broken():
+            raise RuntimeError("private storage detail")
+        monkeypatch.setattr(mock_storage, "patterns_active", broken)
+        monkeypatch.setattr(cap_mod, "_PATTERN_CACHE_TTL", -1)
+        response = await client.get("/.env")
+        await response.read()
+        for _ in range(50):
+            if len(mock_storage.probes) == 2:
+                break
+            await asyncio.sleep(0.01)
+        assert all(p["pattern_id"] is None for p in mock_storage.probes)
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_probe_log_failure_is_retrieved_and_warning_is_throttled(mock_storage, caplog):
+    def broken(_probe):
+        raise RuntimeError("sensitive-db-location-and-token")
+    mock_storage.probes_log = broken
+    cap_mod._fire_and_forget(mock_storage, {})
+    cap_mod._fire_and_forget(mock_storage, {})
+    await asyncio.sleep(0.05)
+    assert caplog.text.count("storage probe log failed") == 1
+    assert "sensitive-db-location-and-token" not in caplog.text
+    assert "Task exception was never retrieved" not in caplog.text

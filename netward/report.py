@@ -327,7 +327,7 @@ def _load_probes(
 ) -> list[dict[str, Any]]:
     sql = (
         "SELECT source_id, timestamp, pattern_id, classification, "
-        "request_json, upstream_passed FROM probes"
+        "request_json, upstream_passed, mirror_fired FROM probes"
     )
     clauses: list[str] = []
     params: list[float] = []
@@ -355,6 +355,7 @@ def _load_probes(
                 "method": method,
                 "ua": ua,
                 "upstream_passed": bool(row["upstream_passed"]),
+                "mirror_fired": bool(row["mirror_fired"]),
                 "_source_bucket": buckets[source_id],
             }
         )
@@ -413,7 +414,12 @@ def _assemble(
     now: Optional[float],
 ) -> dict[str, Any]:
     attack = [row for row in probes if row["classification"] in {"probe", "flood"}]
-    clean = [row for row in probes if row["classification"] == "legit"]
+    # Older captures used unknown even after an unmatched successful forward.
+    # Never count a failed attempt, a mirror, a matched probe, or flood as clean.
+    clean = [row for row in probes
+             if row["classification"] in {"legit", "unknown"}
+             and row["upstream_passed"] and not row["mirror_fired"]
+             and not row["pattern_id"]]
     timestamps = [row["timestamp"] for row in probes]
     attack_ts = [row["timestamp"] for row in attack]
     scoped = attack

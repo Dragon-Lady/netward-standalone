@@ -209,10 +209,9 @@ def test_probes_are_persisted_to_storage(storage):
         "SELECT classification, COUNT(*) AS c FROM probes GROUP BY classification"
     ).fetchall()
     counts = {r["classification"]: r["c"] for r in rows}
-    # 1 probe (wp-admin), 2 unknown (legit paths classify as 'unknown' since
-    # there's no specific 'legit' detector — they pass to upstream)
+    # Successful unmatched forwards are persisted as legit; probes stay probes.
     assert counts.get("probe", 0) == 1
-    assert counts.get("unknown", 0) == 2
+    assert counts.get("legit", 0) == 2
 
 
 def test_flood_burst_classifies_as_flood(storage):
@@ -481,3 +480,17 @@ def test_flood_source_on_probe_path_still_gets_mirrored(storage):
         assert "from upstream" not in body, (
             "probe-shaped path from flood source leaked to upstream"
         )
+
+
+def test_readonly_database_keeps_clean_forwarding_and_probe_mirroring(storage):
+    import sqlite3
+    install_vendor_patterns(storage)
+    storage._conn.execute("PRAGMA query_only=ON")
+    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+        storage._conn.execute("UPDATE patterns SET match_count=0")
+    out = asyncio.run(_run_scenario(storage, ["/healthz", "/.env", "/wp-admin/login.php"]))
+    assert out["results"][0] == (200, "from upstream")
+    assert out["upstream_served"] == ["/healthz"]
+    for status, body in out["results"][1:]:
+        assert status in {200, 429, 503}
+        assert "from upstream" not in body

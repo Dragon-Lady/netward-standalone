@@ -9,14 +9,14 @@
   <meta property="og:url" content="https://dragon-lady.github.io/netward-standalone/">
   <meta property="og:title" content="Net Ward | Make bad traffic take the long way">
   <meta property="og:description" content="Local bot and probe deflection for small HTTP services. User-space, fail-open, and built without retaliation.">
-  <meta property="og:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward-0.4.10.png">
-  <meta property="og:image:width" content="1734">
-  <meta property="og:image:height" content="907">
-  <meta property="og:image:alt" content="Net Ward v0.4.10 maintenance release: cleaner fixtures, verified packages, 384 tests passed. Diagram routes HTTP requests through Net Ward to an upstream service or a decoy.">
+  <meta property="og:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward-0.4.13.png">
+  <meta property="og:image:width" content="1672">
+  <meta property="og:image:height" content="941">
+  <meta property="og:image:alt" content="Net Ward 0.4.13 reliability fixes: keep serving through storage failures, preserve readable saved disables, correct pass-through counts, broaden WordPress admin matching, and improve warning logs and setup. Open-source alpha; review pattern-refresh precautions.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Net Ward | Local bot and probe deflection">
   <meta name="twitter:description" content="Let clean traffic through. Send known abuse somewhere harmless.">
-  <meta name="twitter:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward-0.4.10.png">
+  <meta name="twitter:image" content="https://dragon-lady.github.io/netward-standalone/og-net-ward-0.4.13.png">
   <link rel="canonical" href="https://dragon-lady.github.io/netward-standalone/">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
@@ -44,7 +44,7 @@
   <main id="main">
     <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> Open-source alpha · v0.4.12</p>
+        <p class="eyebrow"><span class="live-dot" aria-hidden="true"></span> Open-source alpha · v0.4.13</p>
         <h1 id="hero-title">Make bad traffic<br><span>take the long way.</span></h1>
         <p class="hero-subtitle">A local deception layer for small HTTP services.</p>
         <p class="hero-text">
@@ -164,7 +164,7 @@
       <div class="code-stack">
         <div class="code-card">
           <span>Install</span>
-          <pre><code><b>$</b> python -m pip install --upgrade "netward&gt;=0.4.12"</code></pre>
+          <pre><code><b>$</b> python -m pip install --upgrade "netward&gt;=0.4.13"</code></pre>
         </div>
         <div class="code-card">
           <span>Configure</span>
@@ -248,13 +248,21 @@
       </div>
     </section>
 
+    <section class="section" aria-label="Net Ward 0.4.13 release fixes">
+      <a href="https://github.com/Dragon-Lady/netward-standalone/releases/tag/v0.4.13">
+        <img src="og-net-ward-0.4.13.png" width="1672" height="941"
+             style="display:block;width:100%;height:auto;border-radius:20px" loading="lazy"
+             alt="Net Ward 0.4.13 reliability fixes: keep serving through storage failures, preserve readable saved disables, correct pass-through counts, broaden WordPress admin matching, and improve warning logs and setup. Open-source alpha; review pattern-refresh precautions.">
+      </a>
+    </section>
+
     <section class="section proof" id="proof">
       <div class="proof-copy">
         <p class="section-kicker">Proof, not theater</p>
         <h2>Reviewed, patched, and public about the edges.</h2>
         <p>
           Net Ward’s pre-launch review found three critical issues before v0.4.1 and closed
-          them before release. The current v0.4.12 line keeps the security policy, changelog,
+          them before release. The current v0.4.13 line keeps the security policy, changelog,
           tests, and known limitations public instead of asking operators to trust a badge.
         </p>
         <div class="proof-actions">
@@ -263,7 +271,7 @@
         </div>
       </div>
       <div class="metric-grid" aria-label="Release evidence">
-        <article><span>Current release</span><strong>v0.4.12</strong><p>Current supported alpha line.</p></article>
+        <article><span>Current release</span><strong>v0.4.13</strong><p>Current supported alpha line.</p></article>
         <article><span>CI matrix</span><strong>3×</strong><p>Python 3.10, 3.11, and 3.12.</p></article>
         <article><span>Pre-launch criticals</span><strong>3 closed</strong><p>Patched before public launch.</p></article>
         <article><span>Maintainer telemetry</span><strong>0</strong><p>No project analytics or traffic upload.</p></article>

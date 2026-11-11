@@ -5,6 +5,44 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-11-10
+
+### Fixed
+
+- Start serving even when writable SQLite initialization fails, preserving
+  readable operator patterns or using bundled defaults without persistence.
+  Preserve saved disables in read-only WAL databases, including committed
+  changes still in the WAL; use a checked private snapshot only without sidecars.
+- Keep bundled probe patterns available before a first storage read succeeds,
+  preserve a warm pattern cache, and use stable fallback source IDs.
+- Retrieve background probe-log errors and warn once per storage operation per
+  minute, without private exception details.
+- Record successful unmatched forwards as `legit` and include older successful
+  `unknown` rows in clean pass-through report counts. Failed attempts, mirrors,
+  matched probes, and floods are excluded.
+- Match WordPress admin subpaths in the bundled vendor pattern, without
+  matching lookalike prefixes. Existing databases need an explicit pattern refresh.
+  `install-patterns --force` resets vendor enabled/disabled state: record and
+  reapply intentional disables before restarting the proxy.
+- Log upstream exceptions, timeouts, and oversized responses at warning level
+  without exposing request or upstream details.
+- Make the PyPI Quick Start self-contained instead of requiring a repository-only
+  example config.
+
+### Documentation
+
+- Explain all five outage-decoy variants, their 200/429/503 statuses and stable
+  selection, separately from fail-open behavior on inspection/rendering errors.
+- Highlight intentional admin-path exclusions and mirror-rendering fallback.
+
+### Known limitation
+
+- SIGTERM (including a typical service/container stop) currently bypasses clean
+  storage shutdown. In read-only fallback mode, a private temporary database
+  snapshot can remain on disk, including stored probe records and client IPs.
+  Its directory is owner-only (0700) and the file is 0600. Shutdown cleanup is
+  tracked for a later release.
+
 ## [0.4.12] - 2026-10-23
 
 ### Fixed

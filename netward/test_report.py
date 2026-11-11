@@ -131,7 +131,7 @@ def test_family_counts_and_privacy(tmp_path):
     assert by_id["admin"]["count"] == 0
     assert by_id["webshells"]["count"] == 0
     assert report["verdict"]["label"] == "probed"
-    assert report["verdict"]["clean_events"] == 2
+    assert report["verdict"]["clean_events"] == 3
     blob = json.dumps(report)
     assert SECRET_IP not in blob
     assert "198.51.100.9" not in blob
@@ -228,3 +228,27 @@ def test_send_delivers_once_under_slack_limit(tmp_path, monkeypatch):
     assert "truncated" in short
     assert len(short) < 120 + 40
     assert len(short) < DIGEST_CHAR_LIMIT or "truncated" in short
+
+
+def test_clean_count_excludes_failed_mirrored_and_matched_forwards(tmp_path):
+    db = tmp_path / "outcomes.db"
+    storage = Storage(db)
+    now = time.time()
+    for i, (classification, forwarded, pattern, mirror) in enumerate([
+        ("legit", True, None, False),
+        ("unknown", True, None, False),  # successful pre-fix capture
+        ("unknown", False, None, True), # unavailable upstream
+        ("legit", False, None, False), # not evidence of a forward
+        ("probe", True, "env_file_probe", False), # render fail-open
+        ("unknown", True, "env_file_probe", False),
+        ("flood", True, None, False),
+        ("legit", True, None, True), # inconsistent mirror row
+    ]):
+        storage.probes_log({"id": str(i), "timestamp": now, "source_id": "source",
+                           "classification": classification, "pattern_id": pattern,
+                           "request": {"method": "GET", "path": "/"},
+                           "upstream_passed": forwarded, "mirror_fired": mirror})
+    storage.close()
+    report = build_report(str(db))
+    assert report["verdict"]["rows_in_window"] == 8
+    assert report["verdict"]["clean_events"] == 2

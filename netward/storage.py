@@ -39,8 +39,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sqlite3
 import threading
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -224,6 +226,20 @@ class StorageError(Exception):
     """Raised on storage layer errors that callers should surface."""
 
 
+class UnavailableStorage:
+    """Explicit no-persistence mode; the capture layer owns in-memory defaults."""
+
+    def _unavailable(self, *args, **kwargs):
+        raise StorageError("persistent storage unavailable")
+
+    sources_lookup = sources_upsert = patterns_active = _unavailable
+    patterns_upsert = mirror_response_upsert = mirror_response_lookup = _unavailable
+    probes_log = alerts_record = alerts_pending = alerts_mark_delivered = _unavailable
+
+    def close(self):
+        pass
+
+
 class Storage:
     """Sqlite-backed Net Ward storage. Open once per process."""
 
@@ -243,15 +259,99 @@ class Storage:
             check_same_thread=False,
             isolation_level=None,
         )
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._migrate()
+        try:
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._migrate()
+        except Exception:
+            self._conn.close()
+            raise
+
+    @classmethod
+    def open_readonly(cls, db_path: str | Path):
+        """Preserve operator policy without migrating or writing the source.
+
+        Prefer SQLite's normal locking/WAL reader. A checkpointed WAL database
+        may need writable sidecars even for a read-only open. Only in that case,
+        read a checked private snapshot; never mark the live file immutable.
+        """
+        obj = cls.__new__(cls)
+        obj.db_path = str(db_path)
+        obj.probe_retention_secs = float(PROBE_RETENTION_SECS)
+        obj.probe_max_rows = int(PROBE_MAX_ROWS)
+        obj._lock = threading.Lock()
+        obj._snapshot_dir = None
+        path = Path(db_path).resolve()
+        try:
+            obj._conn = cls._readonly_connection(path)
+        except sqlite3.Error:
+            obj._snapshot_dir = tempfile.TemporaryDirectory(prefix="netward-readonly-")
+            try:
+                snapshot = Path(obj._snapshot_dir.name) / "snapshot.db"
+                cls._copy_checkpointed_database(path, snapshot)
+                obj._conn = cls._readonly_connection(snapshot, immutable=True)
+                try:
+                    if obj._conn.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
+                        raise StorageError("invalid read-only snapshot")
+                except Exception:
+                    obj._conn.close()
+                    raise
+            except Exception:
+                obj._snapshot_dir.cleanup()
+                raise
+        try:
+            obj._conn.row_factory = sqlite3.Row
+            if obj._conn.execute("SELECT 1 FROM patterns LIMIT 1").fetchone() is None:
+                raise StorageError("no stored patterns available")
+        except Exception:
+            obj.close()
+            raise
+        return obj
+
+    @staticmethod
+    def _readonly_connection(path: Path, *, immutable: bool = False):
+        uri = path.as_uri() + "?mode=ro" + ("&immutable=1" if immutable else "")
+        conn = sqlite3.connect(uri, uri=True, check_same_thread=False, isolation_level=None)
+        try:
+            # Opening alone is lazy: exercise the read before accepting it.
+            conn.execute("SELECT 1 FROM patterns LIMIT 1").fetchone()
+        except Exception:
+            conn.close()
+            raise
+        return conn
+
+    @staticmethod
+    def _copy_checkpointed_database(source: Path, target: Path) -> None:
+        def fingerprint():
+            # Never discard a WAL (which may contain the latest disables), a
+            # rollback journal, or an existing WAL index. Let SQLite read those.
+            for suffix in ("-wal", "-shm", "-journal"):
+                try:
+                    Path(str(source) + suffix).lstat()
+                except FileNotFoundError:
+                    continue
+                raise StorageError("database sidecars prevent snapshot fallback")
+            st = source.stat()
+            return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+
+        before = fingerprint()
+        # Private 0700 directory, exclusive 0600 file; no source chmod/checkpoint.
+        with source.open("rb") as src, target.open("xb") as dst:
+            target.chmod(0o600)
+            shutil.copyfileobj(src, dst)
+        if fingerprint() != before:
+            raise StorageError("database changed during snapshot fallback")
 
     def close(self) -> None:
         with self._lock:
-            self._conn.close()
+            try:
+                self._conn.close()
+            finally:
+                snapshot_dir = getattr(self, "_snapshot_dir", None)
+                if snapshot_dir is not None:
+                    snapshot_dir.cleanup()
 
     def __enter__(self) -> "Storage":
         return self
