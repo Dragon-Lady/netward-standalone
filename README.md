@@ -25,7 +25,7 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 ## Quick Start
 
 ```bash
-python -m pip install --upgrade "netward>=0.4.12"
+python -m pip install --upgrade "netward>=0.4.13"
 # Create config.json in a directory owned by your user (not directly in /tmp).
 cat > config.json <<'JSON'
 {
@@ -39,7 +39,7 @@ JSON
 python -m netward --config config.json
 ```
 
-Version 0.4.12 or newer is the recommended baseline for new installations and
+Version 0.4.13 or newer is the recommended baseline for new installations and
 upgrades. Older releases remain available for reproducibility; new deployments
 should use the current release.
 
@@ -412,4 +412,4 @@ If Net Ward is saving your service some grief and you'd like to help keep it tes
 
 ---
 
-*[Net Ward v0.4.12](CHANGELOG.md)*
+*[Net Ward v0.4.13](CHANGELOG.md)*

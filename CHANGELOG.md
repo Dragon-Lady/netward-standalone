@@ -5,6 +5,8 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-11-10
+
 ### Fixed
 
 - Start serving even when writable SQLite initialization fails, preserving
@@ -32,6 +34,14 @@ Format follows Keep a Changelog. Versioning is semver.
 - Explain all five outage-decoy variants, their 200/429/503 statuses and stable
   selection, separately from fail-open behavior on inspection/rendering errors.
 - Highlight intentional admin-path exclusions and mirror-rendering fallback.
+
+### Known limitation
+
+- SIGTERM (including a typical service/container stop) currently bypasses clean
+  storage shutdown. In read-only fallback mode, a private temporary database
+  snapshot can remain on disk, including stored probe records and client IPs.
+  Its directory is owner-only (0700) and the file is 0600. Shutdown cleanup is
+  tracked for a later release.
 
 ## [0.4.12] - 2026-10-23
 
