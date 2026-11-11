@@ -15,6 +15,7 @@ Variable generators (kinds the substitution engine supports):
     "uuid"           — fresh uuid4 per response (so two probes never see same)
     "timestamp"      — current epoch as an ISO-8601 or numeric string
     "fake_id"        — plausible alphanumeric ID (8-12 chars, mixed case)
+    "fake_aws_access_key_id" — random 20-character AWS-shaped decoy ID
     "fake_token"     — JWT-like or session-token-like string
     "fake_redirect"  — a redirect URL that sends the bot to a honeypot path
     "random_int"     — bounded random number for plausible counts/IDs
@@ -80,6 +81,7 @@ _SUPPORTED_GENERATORS = frozenset(
         "uuid",
         "timestamp",
         "fake_id",
+        "fake_aws_access_key_id",
         "fake_token",
         "fake_redirect",
         "random_int",
@@ -151,6 +153,7 @@ def _generate_value(generator_spec: str, probe: Probe) -> str:
         "uuid": lambda _spec, _probe: str(uuid.uuid4()),
         "timestamp": lambda _spec, _probe: _utc_timestamp(),
         "fake_id": lambda _spec, _probe: _fake_id(),
+        "fake_aws_access_key_id": lambda _spec, _probe: _fake_aws_access_key_id(),
         "fake_token": lambda _spec, _probe: _fake_token(),
         "fake_redirect": lambda _spec, _probe: secrets.choice(_HONEYPOT_REDIRECTS),
         "random_int": _random_int,
@@ -170,6 +173,12 @@ def _utc_timestamp() -> str:
 def _fake_id() -> str:
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(8))
+
+
+def _fake_aws_access_key_id() -> str:
+    # Random bait only: never read or create an actual provider credential.
+    alphabet = string.ascii_uppercase + string.digits
+    return "AKIA" + "".join(secrets.choice(alphabet) for _ in range(16))
 
 
 def _fake_token() -> str:

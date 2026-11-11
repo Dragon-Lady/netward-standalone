@@ -42,9 +42,9 @@
       "headers": {
         "Content-Type": "text/plain; charset=utf-8"
       },
-      "body_template": "[default]\naws_access_key_id = AKIA{{fake_key}}\naws_secret_access_key = {{example_placeholder_aws}}\nregion = us-east-1\n",
+      "body_template": "[default]\naws_access_key_id = {{fake_key}}\naws_secret_access_key = {{example_placeholder_aws}}\nregion = us-east-1\n",
       "body_template_vars": {
-        "fake_key": "fake_id",
+        "fake_key": "fake_aws_access_key_id",
         "example_placeholder_aws": "fake_token"
       },
       "description": "Fake AWS credentials — useless tokens that look like the real shape",
@@ -199,7 +199,7 @@
     {
       "id": "git_config_probe",
       "kind": "path",
-      "signature": "^/\\.git/(config|HEAD|index)$",
+      "signature": "^/\\.git/(config|head|index)$",
       "description": "Git directory exposure probe",
       "severity": "warn",
       "origin": "vendor",
@@ -336,7 +336,7 @@
     {
       "id": "phpmyadmin_probe",
       "kind": "path",
-      "signature": "^/(phpmyadmin|phpMyAdmin|pma|mysqladmin)(/|\\?.*)?$",
+      "signature": "^/(phpmyadmin|pma|mysqladmin)(/|\\?.*)?$",
       "description": "phpMyAdmin discovery probe",
       "severity": "warn",
       "origin": "vendor",

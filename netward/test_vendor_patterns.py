@@ -27,10 +27,12 @@ from pathlib import Path
 
 import pytest
 
+from netward.classify import classify
 from netward.mirror import (
     _HOSTILE_PAYLOAD_MARKERS,
     _PII_VAR_RE,
     _SUPPORTED_GENERATORS,
+    fire_mirror,
 )
 
 
@@ -103,6 +105,19 @@ def test_every_pattern_signature_compiles(patterns):
             re.compile(p["signature"])
         except re.error as exc:
             pytest.fail(f"pattern {p['id']!r} signature does not compile: {exc}")
+
+
+def test_vendor_path_patterns_have_no_unescaped_uppercase_letters(patterns):
+    """Path matching lowercases input; literal uppercase branches are dead."""
+    for pattern in patterns:
+        if pattern["kind"] != "path":
+            continue
+        # Ignore escape tokens: regex operators such as \D must retain case.
+        literal_text = re.sub(r"\\.", "", pattern["signature"])
+        assert not re.search(r"[A-Z]", literal_text), (
+            f"path pattern {pattern['id']!r} contains uppercase letters "
+            "outside regex escapes, but request paths are lowercased"
+        )
 
 
 def test_every_pattern_kind_supported(patterns):
@@ -258,6 +273,11 @@ def test_path_patterns_do_not_match_legit_traffic(patterns, legit_path):
 
 
 @pytest.mark.parametrize(("pattern_id", "probe_path"), [
+    ("git_config_probe", "/.git/HEAD"),
+    ("git_config_probe", "/.git/head"),
+    ("git_config_probe", "/.GIT/HeAd/"),
+    ("git_config_probe", "/.git/config"),
+    ("git_config_probe", "/.git/index"),
     ("generic_admin_login_probe", "/admin"),
     ("generic_admin_login_probe", "/admin/"),
     ("wordpress_admin_probe", "/WP-ADMIN/"),
@@ -288,11 +308,41 @@ def test_path_patterns_do_not_match_legit_traffic(patterns, legit_path):
 ])
 def test_vendor_path_patterns_cover_expected_probe_variants(patterns, pattern_id, probe_path):
     pattern = next(p for p in patterns if p["id"] == pattern_id)
-    normalized = probe_path.lower().rstrip("/") or "/"
-    regex = re.compile(pattern["signature"])
-    assert regex.search(normalized), (
+    result = classify({"request": {"path": probe_path}}, {"patterns": [pattern]})
+    assert result["fire_mirror"], (
         f"pattern {pattern_id!r} did not match expected probe path {probe_path!r}"
     )
+    assert result["probe"]["pattern_id"] == pattern_id
+    assert result["mirror_response_id"] == pattern["mirror_response_id"]
+
+
+@pytest.mark.parametrize("path", [
+    "/.git/HEAD.bak",
+    "/.git/HEAD/extra",
+    "/.git/HEADquarters",
+    "/docs/.git/HEAD",
+])
+def test_git_pattern_does_not_expand_to_unlisted_paths(patterns, path):
+    pattern = next(p for p in patterns if p["id"] == "git_config_probe")
+    result = classify({"request": {"path": path}}, {"patterns": [pattern]})
+    assert not result["fire_mirror"]
+    assert result["probe"]["upstream_passed"]
+
+
+def test_aws_mirror_renders_fresh_twenty_character_access_key_ids(mirrors):
+    mirror = next(m for m in mirrors if m["id"] == "aws_credentials_fake")
+    ids = set()
+    for _ in range(16):
+        rendered = fire_mirror({"request": {"path": "/.aws/credentials"}}, mirror)
+        line = next(
+            line for line in rendered["body"].splitlines()
+            if line.startswith("aws_access_key_id = ")
+        )
+        access_key_id = line.partition(" = ")[2]
+        assert re.fullmatch(r"AKIA[A-Z0-9]{16}", access_key_id)
+        assert "{{" not in rendered["body"]
+        ids.add(access_key_id)
+    assert len(ids) == 16
 
 
 @pytest.mark.parametrize("legit_ua", [

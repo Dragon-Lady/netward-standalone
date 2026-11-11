@@ -5,6 +5,30 @@ Format follows Keep a Changelog. Versioning is semver.
 
 ## [Unreleased]
 
+## [0.4.14] - 2026-11-10
+
+### Fixed
+
+- Match `/.git/HEAD` probes with the bundled Git pattern after the classifier
+  normalizes path case. Regression tests exercise the real classifier.
+- Remove the redundant mixed-case phpMyAdmin alternative and guard bundled
+  path patterns against unescaped uppercase letters. Regex escapes keep their
+  case; header patterns are unaffected.
+- Render fake AWS access key IDs as `AKIA` plus 16 uppercase letters or digits,
+  using a dedicated random decoy generator instead of the eight-character
+  generic ID generator. No real credentials are read or created.
+
+Existing databases retain their installed patterns and mirror templates. Both
+fixes require a reviewed vendor-definition refresh for those databases; a package
+upgrade alone is insufficient. Back up the stopped deployment and preserve
+intentional disables and customizations before using `install-patterns --force`,
+as described in the README.
+
+If rolling back to 0.4.13 or earlier after refreshing definitions, stop the
+proxy and restore the pre-refresh database backup along with the older package
+before restarting. Older versions cannot render the new AWS decoy generator;
+downgrading the package alone leaves an incompatible mirror definition.
+
 ## [0.4.13] - 2026-11-10
 
 ### Fixed

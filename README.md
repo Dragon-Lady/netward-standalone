@@ -25,7 +25,7 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 ## Quick Start
 
 ```bash
-python -m pip install --upgrade "netward>=0.4.13"
+python -m pip install --upgrade "netward>=0.4.14"
 # Create config.json in a directory owned by your user (not directly in /tmp).
 cat > config.json <<'JSON'
 {
@@ -39,7 +39,7 @@ JSON
 python -m netward --config config.json
 ```
 
-Version 0.4.13 or newer is the recommended baseline for new installations and
+Version 0.4.14 or newer is the recommended baseline for new installations and
 upgrades. Older releases remain available for reproducibility; new deployments
 should use the current release.
 
@@ -236,12 +236,21 @@ python -m netward.cli --db netward.db install-patterns
 python -m netward.cli --db netward.db install-patterns --force
 ```
 
-Existing databases keep their installed vendor patterns across upgrades. To
-adopt the expanded WordPress subpath match, review the bundled patterns and
-refresh them with `--force`, then restart the proxy to refresh its cache. A
+Existing databases keep their installed vendor patterns and mirror responses
+across upgrades. A package upgrade alone does not refresh these definitions.
+To adopt updated matching or decoy templates, stop the proxy, back up the
+database, and record intentional disables and any customized vendor definitions.
+Review the bundled definitions and refresh them with `--force`. A
 forced refresh replaces vendor definitions and their enabled/disabled state;
-reapply intentional disables before restarting. Operator-origin patterns with
-distinct IDs remain separate.
+reapply intentional disables and reviewed customizations before restarting the
+proxy to refresh its cache. Operator-origin patterns with distinct IDs remain
+separate.
+
+**Rollback after a definition refresh:** if returning to 0.4.13 or earlier,
+stop the proxy and restore the pre-refresh database backup along with the older
+package before restarting. Those versions do not support the new
+`fake_aws_access_key_id` generator. A package-only downgrade leaves the refreshed
+AWS mirror unable to render.
 
 List active patterns:
 
@@ -412,4 +421,4 @@ If Net Ward is saving your service some grief and you'd like to help keep it tes
 
 ---
 
-*[Net Ward v0.4.13](CHANGELOG.md)*
+*[Net Ward v0.4.14](CHANGELOG.md)*
