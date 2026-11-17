@@ -15,6 +15,7 @@ import pytest
 import aiohttp
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
+from yarl import URL
 
 import netward.capture as cap_mod
 from netward.capture import _make_handler
@@ -22,6 +23,189 @@ from netward.schema import OperatorConfig
 from netward.storage import Storage
 
 _ALERT_DISPATCHER_KEY = web.AppKey("alert_dispatcher", cap_mod._AlertDispatcher)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('variant', range(5))
+async def test_unmatched_outage_is_503_for_every_default_variant(variant, monkeypatch):
+    storage = _MockStorage()
+    monkeypatch.setattr(cap_mod, '_select_default_mirror',
+                        lambda *_: cap_mod._DEFAULT_MIRROR_VARIANTS[variant])
+    async def unavailable(*args, **kwargs):
+        return None
+    monkeypatch.setattr(cap_mod, '_forward_upstream', unavailable)
+    client, session = await _make_client(_config(), storage)
+    try:
+        response = await client.get('/monitor-coral')
+        assert response.status == 503
+        assert response.headers['Cache-Control'] == 'no-store'
+        await asyncio.sleep(0.02)
+        logged = storage.probes[-1]
+        assert not logged['mirror_fired']
+        assert not logged['upstream_passed']
+        assert logged['classification'] == 'unknown'
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_classifier_failure_with_unavailable_upstream_is_503(monkeypatch):
+    storage = _MockStorage()
+    def broken(*args, **kwargs):
+        raise RuntimeError('test classifier fault')
+    async def unavailable(*args, **kwargs):
+        return None
+    monkeypatch.setattr(cap_mod._classify_mod, 'classify', broken)
+    monkeypatch.setattr(cap_mod, '_forward_upstream', unavailable)
+    client, session = await _make_client(_config(), storage)
+    try:
+        response = await client.get('/monitor-coral')
+        assert response.status == 503
+        await asyncio.sleep(0.02)
+        assert not storage.probes[-1]['mirror_fired']
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target', [
+    '/preview-coral//.env', '/preview-coral/%2f.env', '/%2egit//config',
+    '/.env.', '/.env%2e', '/.env%00', '/.env%20', '/.env;', '/.env;.js',
+    '/.env::$data', '/.git/config;', '/xmlrpc.php;', '/wp-login.php;x',
+    '/preview-coral/../.git/config', '/preview-coral/..%2f.git/config',
+    '/preview-coral/%2e%2e/.git/config', '/./.git/config', '/.git/./config',
+    '/preview-coral/..%2fwp-login.php',
+    '/preview-coral/%2e%2e/.ENV.%00%20;download=1',
+    '/preview-coral/../.git/config::$DaTa.%20',
+    '/preview-coral/../phpinfo.php.%09', '/.env./.',
+    '/preview-coral/../.git/config;download=1/?q=public',
+    '/.env/child-coral/..;navigation', '/.env/child-coral/..',
+])
+async def test_wire_path_variants_match_existing_rules(tmp_path, target):
+    from netward.bootstrap import install_vendor_patterns
+    storage = Storage(tmp_path/'wire.db')
+    install_vendor_patterns(storage)
+    client, session = await _make_client(_config(), storage)
+    try:
+        response = await _raw_get(client, target)
+        assert response.startswith(b'HTTP/1.1 200')
+        await asyncio.sleep(0.02)
+        logged = storage._conn.execute('SELECT mirror_fired,upstream_passed FROM probes').fetchone()
+        assert tuple(logged) == (1,0)
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+        storage.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target', [
+    '/catalog-coral//item/%2F%3F%23?q=a%2Bb&q=%2F&empty=',
+    '/catalog-coral/../items/./entry.;view=full',
+    '/catalog-coral/%2e%2e/items/item%00', '/items/item%20',
+    '/items/item::$DaTa', '/items/item%2e%20;view=full?q=UPPER%2BValue',
+    '/docs/phpinfo.;reader', '/.git/config/../../index.html',
+    '/.env/../healthz', '/.env/..;navigation',
+    '/.well-known/./security.txt', '/api/v1/../users;page=2',
+])
+async def test_matching_normalization_does_not_rewrite_upstream_target(mock_storage, target):
+    from netward.bootstrap import load_vendor_data
+    mock_storage.patterns = [p for p in load_vendor_data()['patterns'] if p.get('expires_at') is None]
+    seen = []
+    async def upstream(request):
+        seen.append(request.raw_path)
+        return web.Response(text='application response')
+    runner, port = await _spin_upstream(upstream)
+    client, session = await _make_client(_config(f'http://127.0.0.1:{port}/base'), mock_storage)
+    try:
+        response = await _raw_get(client, target)
+        assert response.startswith(b'HTTP/1.1 200')
+        assert b'application response' in response
+        assert seen == ['/base'+target]
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('pattern_id,target', [
+    ('env_file_probe', '/preview-coral/../.env.%00%20;download=1'),
+    ('env_file_probe', '/.env::$DaTa?x=a%2Bb&x=UPPER'),
+    ('git_config_probe', '/preview-coral/..%2f.git/config;download=1'),
+    ('wordpress_admin_probe', '/preview-coral/%2e%2e/wp-login.php;x'),
+    ('wordpress_xmlrpc_probe', '/xmlrpc.php;'),
+])
+async def test_disabled_probe_variants_forward_raw_target(tmp_path, pattern_id, target):
+    from netward.bootstrap import install_vendor_patterns
+    storage = Storage(tmp_path / 'disabled-wire.db')
+    install_vendor_patterns(storage)
+    changed = storage._conn.execute('UPDATE patterns SET expires_at=1 WHERE id=?', (pattern_id,))
+    assert changed.rowcount == 1
+    seen = []
+    async def upstream(request):
+        seen.append(request.raw_path)
+        return web.Response(text='application response')
+    runner, port = await _spin_upstream(upstream)
+    client, session = await _make_client(_config(f'http://127.0.0.1:{port}'), storage)
+    try:
+        response = await _raw_get(client, target)
+        assert response.startswith(b'HTTP/1.1 200')
+        assert b'application response' in response
+        assert seen == [target]
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+        await runner.cleanup()
+        storage.close()
+
+
+@pytest.mark.asyncio
+async def test_absolute_request_target_keeps_configured_upstream(mock_storage):
+    seen = []
+    async def upstream(request):
+        seen.append(request.raw_path)
+        return web.Response(text='configured origin')
+    runner, port = await _spin_upstream(upstream)
+    client, session = await _make_client(_config(f'http://127.0.0.1:{port}'), mock_storage)
+    try:
+        reader, writer = await asyncio.open_connection('127.0.0.1',client.server.port)
+        writer.write(b'GET http://outside.example.invalid/catalog//item?x=a%2Bb HTTP/1.1\r\n'
+                     b'Host: outside.example.invalid\r\nConnection: close\r\n\r\n')
+        await writer.drain()
+        response = await reader.read()
+        writer.close()
+        await writer.wait_closed()
+        assert response.startswith(b'HTTP/1.1 200')
+        assert b'configured origin' in response
+        assert seen == ['/catalog//item?x=a%2Bb']
+    finally:
+        await client.app[_ALERT_DISPATCHER_KEY].close()
+        await client.close()
+        await session.close()
+        await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_listener_setup_failure_closes_owned_storage(tmp_path, monkeypatch):
+    import netward.storage as storage_mod
+    storage = Storage(tmp_path/'startup.db')
+    monkeypatch.setattr(storage_mod, 'Storage', lambda *a, **kw: storage)
+    async def fail_start(self):
+        raise OSError('test bind failure')
+    monkeypatch.setattr(web.TCPSite, 'start', fail_start)
+    with pytest.raises(OSError, match='bind failure'):
+        await cap_mod.start_capture_loop(_config())
+    import sqlite3
+    with pytest.raises(sqlite3.ProgrammingError):
+        storage._conn.execute('SELECT 1')
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +314,19 @@ async def _make_client(config: OperatorConfig, storage) -> tuple[TestClient, aio
     return client, session
 
 
+async def _raw_get(client, target):
+    """Send the supplied target without client-side URL normalisation."""
+    reader, writer = await asyncio.open_connection('127.0.0.1', client.server.port)
+    try:
+        writer.write(('GET ' + target + ' HTTP/1.1\r\nHost: localhost\r\n'
+                      'Connection: close\r\n\r\n').encode('ascii'))
+        await writer.drain()
+        return await reader.read()
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
 @pytest.mark.asyncio
 async def test_matched_requests_record_and_deliver_one_deduplicated_alert(tmp_path):
     storage = Storage(tmp_path / "alerts.db")
@@ -217,21 +414,18 @@ async def test_flood_threshold_records_critical_alert(tmp_path):
 async def test_legit_request_forwarded_upstream(mock_storage):
     """
     No patterns, no flood -> classification=unknown -> forwards to upstream.
-    If the upstream is unreachable, Net Ward falls back to the default mirror
-    (one of five response-shape variants) rather than a raw 502.
+    If the upstream is unreachable, the request receives an honest 503.
     """
     client, session = await _make_client(_config(upstream="http://127.0.0.1:59997"), mock_storage)
     try:
         resp = await client.get("/api/v1/status")
-        # Default mirror variants: 200 (json ok), 429 (rate limited), 503 (html),
-        # 200 (empty json), 200 (plain). Any is valid; 502 is the failure mode.
-        assert resp.status in {200, 429, 503}
+        assert resp.status == 503
         await asyncio.sleep(0.05)  # let fire-and-forget probe log flush
         assert len(mock_storage.probes) > 0
         logged = mock_storage.probes[-1]
         assert logged["classification"] == "unknown"
         assert logged["upstream_passed"] is False
-        assert logged["mirror_fired"] is True
+        assert logged["mirror_fired"] is False
     finally:
         await client.close()
         await session.close()
@@ -302,7 +496,7 @@ async def test_flood_with_probe_path_fires_mirror(mock_storage, stub_mirror):
 async def test_flood_without_probe_path_passes_through(mock_storage):
     """
     Source in flood state hitting a non-probe path still reaches upstream (B1).
-    Upstream unavailable here → default mirror fallback, but classification is
+    Upstream unavailable here → 503, but classification is
     still 'flood' and the probe log shows the pass-through attempt.
     """
     now = time.time()
@@ -317,13 +511,13 @@ async def test_flood_without_probe_path_passes_through(mock_storage):
         "legit_count": 0,
         "notes": [],
     }
-    # No patterns installed — any path will pass through (or fall to mirror if upstream down)
+    # No patterns installed — try upstream, then 503 if it is unavailable.
     cap_mod._rate_windows[source_id] = deque([now - 0.1] * 1000, maxlen=2000)
 
     client, session = await _make_client(_config(upstream="http://127.0.0.1:59995"), mock_storage)
     try:
         resp = await client.get("/api/health")
-        assert resp.status in {200, 429, 503}  # upstream down → default mirror variant
+        assert resp.status == 503
         await asyncio.sleep(0.05)
         assert len(mock_storage.probes) > 0
         logged = mock_storage.probes[-1]
@@ -337,19 +531,18 @@ async def test_flood_without_probe_path_passes_through(mock_storage):
 async def test_no_match_routes_upstream(mock_storage):
     """
     Pattern installed but path doesn't match -> unknown -> upstream.
-    If upstream is unavailable, Net Ward falls back to one of the default mirror
-    variants rather than a raw 502.
+    If upstream is unavailable, Net Ward returns 503 without logging a mirror.
     """
     mock_storage.patterns = [_wp_admin_pattern()]
     client, session = await _make_client(_config(upstream="http://127.0.0.1:59996"), mock_storage)
     try:
         resp = await client.get("/totally/legitimate/endpoint")
-        assert resp.status in {200, 429, 503}  # default mirror variant (not a raw 502)
+        assert resp.status == 503
         await asyncio.sleep(0.05)
         assert len(mock_storage.probes) > 0
         logged = mock_storage.probes[-1]
         assert logged["classification"] == "unknown"
-        assert logged["mirror_fired"] is True
+        assert logged["mirror_fired"] is False
         assert logged["upstream_passed"] is False
     finally:
         await client.close()
@@ -447,7 +640,7 @@ async def test_upstream_body_read_failure_fail_opens(mock_storage, monkeypatch, 
     try:
         resp = await client.get("/api/status")
         assert resp.status != 500
-        assert resp.status in {200, 429, 503}
+        assert resp.status == 503
         body = await resp.text()
         assert "upstream forwarding failed" in caplog.text
         assert "RuntimeError" in caplog.text
@@ -484,7 +677,7 @@ async def test_storage_read_failure_fail_opens_never_500():
     """
     sources_lookup / mirror_response_lookup exceptions must not abort the
     handler with 500. Traffic continues fail-open: forward upstream, or
-    default-mirror if upstream is down.
+    503 for unmatched requests if upstream is down.
     """
     storage = _FailingReadStorage()
     client, session = await _make_client(
@@ -495,9 +688,9 @@ async def test_storage_read_failure_fail_opens_never_500():
         assert resp.status != 500, (
             "storage read failure must not 500 the request path"
         )
-        assert resp.status in {200, 429, 503}
+        assert resp.status == 503
         body = await resp.text()
-        assert body  # default mirror or upstream body, never an empty crash
+        assert body
     finally:
         await client.close()
         await session.close()
@@ -573,8 +766,8 @@ async def _spin_upstream(handler) -> tuple[web.AppRunner, int]:
 
 
 @pytest.mark.asyncio
-async def test_upstream_timeout_fail_opens_to_default_mirror(mock_storage, caplog):
-    """Hung upstream must not pin the worker; request fail-opens to default mirror."""
+async def test_upstream_timeout_returns_503(mock_storage, caplog):
+    """Hung upstream must not pin the worker or appear healthy."""
 
     async def slow(request):
         await asyncio.sleep(10)
@@ -593,7 +786,7 @@ async def test_upstream_timeout_fail_opens_to_default_mirror(mock_storage, caplo
             elapsed = time.monotonic() - t0
             assert elapsed < 2.0, f"upstream timeout did not fire, elapsed={elapsed:.2f}s"
             assert resp.status != 500
-            assert resp.status in {200, 429, 503}
+            assert resp.status == 503
             assert "too late" not in await resp.text()
             assert "upstream timed out" in caplog.text
             assert any(r.levelno == logging.WARNING for r in caplog.records)
@@ -650,7 +843,7 @@ async def test_upstream_concurrency_cap_serializes_in_flight(mock_storage):
 
 
 @pytest.mark.asyncio
-async def test_upstream_body_over_cap_fail_opens_to_default_mirror(mock_storage, caplog):
+async def test_upstream_body_over_cap_returns_503(mock_storage, caplog):
     """Oversized upstream bodies are not fully buffered; request fail-opens."""
 
     async def fat(request):
@@ -667,7 +860,7 @@ async def test_upstream_body_over_cap_fail_opens_to_default_mirror(mock_storage,
             body = await resp.text()
             assert "X" * 64 not in body
             assert "upstream response exceeded body cap" in caplog.text
-            assert resp.status in {200, 429, 503}
+            assert resp.status == 503
         finally:
             await client.close()
             await session.close()

@@ -11,7 +11,7 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 ### Why Net Ward
 
 - **Deflects, doesn't fight back.** Bots waste time on convincing-but-harmless mirrors; your upstream never sees the request.
-- **User-space and fail-open.** No kernel modules, no packet tampering. If classification or rendering fails, traffic passes through to upstream (or the default mirror if upstream is down). Storage failures use readable, cached, or bundled patterns while keeping the listener available.
+- **User-space and fail-open.** No kernel modules, no packet tampering. If classification or rendering fails, traffic passes through to upstream. Unmatched requests receive 503 when upstream cannot serve them. Storage failures use readable, cached, or bundled patterns while keeping the listener available.
 - **Drops in anywhere.** One Python process in front of any HTTP service. Point your load balancer at it and go.
 - **Honest by design.** No telemetry, no harvested credentials, operator owns every byte of local data. Apache-2.0.
 
@@ -20,12 +20,17 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 
 **Website:** [dragon-lady.github.io/netward-standalone](https://dragon-lady.github.io/netward-standalone/)
 
+**Version 0.5.0** expands probe matching, refreshes definitions while preserving
+operator settings and history, and returns 503 for unmatched requests when the
+upstream is unavailable. Stop the proxy and back up its database before upgrading;
+review the definition-refresh and rollback guidance below.
+
 ---
 
 ## Quick Start
 
 ```bash
-python -m pip install --upgrade "netward>=0.4.14"
+python -m pip install --upgrade "netward>=0.5.0"
 # Create config.json in a directory owned by your user (not directly in /tmp).
 cat > config.json <<'JSON'
 {
@@ -39,7 +44,7 @@ JSON
 python -m netward --config config.json
 ```
 
-Version 0.4.14 or newer is the recommended baseline for new installations and
+Version 0.5.0 or newer is the recommended baseline for new installations and
 upgrades. Older releases remain available for reproducibility; new deployments
 should use the current release.
 
@@ -66,8 +71,8 @@ cp example_config.json config.json
 ```
 
 Point `upstream_target` at a real HTTP service before you start Net Ward. If
-the upstream is unreachable, unmatched requests return a default mirror response
-instead of exposing a raw proxy error.
+the upstream is unreachable, unmatched requests return 503 Service Unavailable.
+Matched probes continue to receive their configured decoys.
 
 Required fields:
 
@@ -87,7 +92,7 @@ Email requires `alert_email`, `alert_smtp_host`, and `alert_smtp_from`. Set `ale
 | `upstream_timeout_connect` | `3` | Connect (DNS + TCP + TLS) timeout, in seconds |
 | `upstream_timeout_sock_read` | `5` | Idle time between upstream socket reads, in seconds |
 | `upstream_max_concurrency` | `64` | In-flight upstream requests |
-| `upstream_max_body_bytes` | `8388608` | Max buffered upstream response body (8 MiB). Larger bodies return the default mirror |
+| `upstream_max_body_bytes` | `8388608` | Max buffered upstream response body (8 MiB). Larger bodies on unmatched requests return 503 |
 | `probe_retention_secs` | `604800` | Probe-log TTL (7 days) |
 | `probe_max_rows` | `10000` | Max probe-log rows after purge-on-write |
 | `alert_timeout_secs` | `5` | Per-channel timeout for outbound alert delivery, in seconds |
@@ -150,10 +155,13 @@ Inspection failure and an unavailable upstream are different cases:
   to upstream. If a matched probe's mirror cannot render, that request also
   forwards to upstream; the rendering error is logged at ERROR. Storage-write
   failures must not prevent an otherwise successful response.
-- **Default mirror:** if upstream is dead, times out, or sends a response over
-  the configured body cap, Net Ward serves a decoy instead of a raw proxy 502.
-  This is the 0.4.1 **502-oracle fix**: returning a raw 502 only for clean paths
-  would reveal which paths are mirrored. It does not keep the real app online.
+- **Unmatched requests:** if upstream is dead, times out, or sends a response
+  over the configured body cap, Net Ward returns 503 with `Cache-Control:
+  no-store` and `Retry-After: 30`. A classifier failure follows this same rule
+  when forwarding fails. These responses are not counted as mirrors or clean
+  pass-through events. Monitors can see the outage.
+- **Matched probes:** the configured decoy continues to work during an outage.
+  The default mirror is a fallback for a matched probe with no usable template.
 
 There are five default variants, selected by a stable digest of the source ID
 and path. The same source ID and path get the same variant; generated fields
@@ -169,9 +177,10 @@ older stored ID and the fallback ID can change the variant once.
 | 200 | JSON with `data: null` and `next: null` |
 | 200 | Plain-text `OK` |
 
-Thus `curl -i http://127.0.0.1:8080/healthz` may return 200, 429, or 503 during
-an upstream outage. A 429 or 503 on a clean path is an intentional decoy, not
-proof that fail-open broke. No particular path is guaranteed a particular status.
+An unmatched `curl -i http://127.0.0.1:8080/healthz` returns 503 during an
+upstream outage. The variants above apply only to matched-probe fallbacks.
+Custom rules that match a health endpoint will still intercept it; keep monitor
+paths out of such rules.
 Default timeouts are 3 seconds to connect, 5 seconds between socket reads,
 and 10 seconds total. Forwarding exceptions, timeouts, and body-cap fallbacks
 are logged at WARNING without upstream URLs, request data, or exception messages.
@@ -188,9 +197,10 @@ committed policy changes in the WAL are retained; the snapshot fallback never
 ignores them. Snapshot policy stays fixed until restart. If neither read path
 is available, the database is corrupt, or it has no patterns, it runs without
 persistence using the bundled probe patterns and mirror bodies in memory.
-The temporary snapshot is used only for reads and removed on clean shutdown;
-it is not a replacement writable database. Abrupt termination can leave the
-private temporary directory behind.
+The temporary snapshot is used only for reads and removed on clean shutdown,
+including SIGTERM on platforms with event-loop signal support, and on listener
+setup failures. It is not a replacement writable database. SIGKILL, power loss
+and platforms without graceful signal support can leave the private directory.
 
 At runtime, a failed pattern refresh preserves the last successfully read
 pattern set, including an intentionally empty one. With no successful read,
@@ -236,15 +246,56 @@ python -m netward.cli --db netward.db install-patterns
 python -m netward.cli --db netward.db install-patterns --force
 ```
 
-Existing databases keep their installed vendor patterns and mirror responses
-across upgrades. A package upgrade alone does not refresh these definitions.
-To adopt updated matching or decoy templates, stop the proxy, back up the
-database, and record intentional disables and any customized vendor definitions.
-Review the bundled definitions and refresh them with `--force`. A
-forced refresh replaces vendor definitions and their enabled/disabled state;
-reapply intentional disables and reviewed customizations before restarting the
-proxy to refresh its cache. Operator-origin patterns with distinct IDs remain
-separate.
+This development update refreshes vendor definitions automatically at startup.
+Stop the proxy and back up the database before upgrading. Review new rule
+families before restarting: new default rules become active, while optional
+rules start disabled. Existing enables, disables, creation timestamps and match
+history survive both normal and forced refresh, even if all existing vendor
+rules are disabled. Expiry cleanup retains disabled vendor policy records.
+
+Vendor-owned matching fields and decoy content are refreshed. Put custom rules
+under separate operator-origin IDs. Non-vendor rules and existing mirrors they
+reference are preserved. A refresh either completes as one transaction or rolls
+back; malformed packs cannot partly install. Restart after an offline CLI
+refresh so the proxy immediately uses the updated definitions.
+
+These guarantees apply to this update. In 0.4.14 and earlier, a package upgrade
+does not refresh definitions and `install-patterns --force` can reset disables
+and match history.
+
+### Additional probe coverage
+
+The default pack adds PHP diagnostic files, named environment files,
+service-account credentials, private credential files, repository metadata,
+infrastructure state, diagnostic logs and source backups. Repeated slashes are
+collapsed only for matching. Forwarded paths and query strings retain their
+original encoding. Classification also resolves `.` and `..` path segments and
+removes final-segment padding (trailing dots, NULs and whitespace), `;...` path
+parameters and a case-insensitive `::$data` suffix. This changes only the matching
+copy, including for encoded forms already decoded by the HTTP server. It does not
+decode a second time or strip suffixes from intermediate directory names. Generic
+application pages are not added to the defaults.
+
+The following rules are installed **disabled** because real sites may serve
+these paths. Enable only families that your application does not use:
+
+| Optional rule | Content it can intercept |
+|---------------|--------------------------|
+| `short_php_diagnostic_probe` | Short PHP names such as test or information pages |
+| `framework_diagnostic_route_probe` | Framework diagnostics and server status routes |
+| `deployment_file_probe` | Deployment and automation configuration downloads |
+| `runtime_configuration_file_probe` | Public runtime configuration and generic JSON key files |
+| `database_download_probe` | Named SQL downloads |
+| `archive_download_probe` | Named site archive downloads |
+| `cms_manifest_probe` | CMS manifests and development-library paths |
+
+For example, after reviewing your routes:
+
+```bash
+python -m netward.cli --db netward.db enable-pattern framework_diagnostic_route_probe
+```
+
+Refresh preserves this enable until you explicitly disable the rule again.
 
 **Rollback after a definition refresh:** if returning to 0.4.13 or earlier,
 stop the proxy and restore the pre-refresh database backup along with the older
@@ -274,7 +325,7 @@ python -m netward.cli --db netward.db report --send --config config.json
 
 “Clean pass-through events” counts unmatched, non-flood requests that received
 an upstream response, including older rows labeled `unknown`. It describes
-routing, not a guarantee that the traffic is safe. Outage mirrors and matched
+routing, not a guarantee that the traffic is safe. Unavailable-upstream responses and matched
 probes forwarded after rendering errors do not count as clean pass-throughs.
 
 The stored probe log is capped at 7 days or 10,000 rows. A report describes
@@ -345,7 +396,7 @@ Net Ward is fail-open and user-space only:
 - No hostile payloads
 - No retaliation
 - No phone-home and no maintainer telemetry
-- If classification or mirror rendering fails, traffic is forwarded to upstream. If upstream is also unreachable, the default mirror is returned. Storage failures keep serving with readable, cached, or bundled patterns as described above; recording a request must not block its response.
+- If classification or mirror rendering fails, traffic is forwarded to upstream. Unmatched requests receive 503 if forwarding cannot complete; matched probes retain their decoy fallback. Storage failures keep serving with readable, cached, or bundled patterns as described above; recording a request must not block its response.
 - Fail-closed (drop traffic when Net Ward cannot classify or store) is **not** implemented.
 
 The mirror layer is meant to deflect automated abuse, not attack it back.
@@ -421,4 +472,4 @@ If Net Ward is saving your service some grief and you'd like to help keep it tes
 
 ---
 
-*[Net Ward v0.4.14](CHANGELOG.md)*
+*[Net Ward v0.5.0](CHANGELOG.md)*

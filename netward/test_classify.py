@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from netward import classify as mod
 from netward.schema import (
     PROBES_TO_KNOWN_BAD,
@@ -87,6 +89,23 @@ def _flood_window(n: int = 1000) -> list[float]:
 # ---------------------------------------------------------------------------
 
 class TestClassify:
+    @pytest.mark.parametrize('path,expected', [
+        ('/preview-coral/../.env.\x00 ;download=1?x=UPPER', '/.env?x=upper'),
+        ('/../../.git/./config::$DATA', '/.git/config'),
+        ('/.env/..', '/'), ('/.env/.', '/.env'),
+        ('/.env/..;navigation', '/'), ('/.env/.. \x00', '/'),
+        ('/docs;view=compact/.git/config', '/docs;view=compact/.git/config'),
+        ('/%2e%2e/.git/config', '/%2e%2e/.git/config'),
+        ('/.env/../index.html?next=/../.env.;download', '/index.html?next=/../.env.;download'),
+        ('/', '/'), ('', ''),
+    ])
+    def test_match_copy_handles_navigation_without_rewriting_probe(self, path, expected):
+        probe = _probe(path)
+        result = mod.classify(probe, {'patterns': [_pattern('path', r'^/never-coral$')]})
+        assert mod._normalize_path_for_match(path) == expected
+        assert probe['request']['path'] == path
+        assert result['probe']['request']['path'] == path
+
     def test_path_pattern_match_fires_mirror(self):
         probe = _probe("/wp-admin/login.php")
         patterns = [_pattern("path", r"^/wp-admin\b")]

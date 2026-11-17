@@ -34,7 +34,7 @@ def _cmd_install_patterns(args) -> None:
     try:
         pats, mirrors = _bootstrap.install_vendor_patterns(storage, force=args.force)
         if pats == 0 and mirrors == 0 and not args.force:
-            print("Vendor patterns already installed. Use --force to reinstall.")
+            print("Vendor definitions are up to date. Operator settings preserved.")
         else:
             print(f"Installed {pats} pattern(s) and {mirrors} mirror response(s).")
     except _bootstrap.BootstrapError as exc:
@@ -135,8 +135,8 @@ def main(argv: list[str] | None = None) -> None:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_install = sub.add_parser("install-patterns", help="Seed vendor patterns into storage")
-    p_install.add_argument("--force", action="store_true", help="Re-install even if already seeded")
+    p_install = sub.add_parser("install-patterns", help="Refresh vendor definitions while preserving operator settings")
+    p_install.add_argument("--force", action="store_true", help="Refresh all vendor definitions; keep enabled state and match history")
     p_install.set_defaults(func=_cmd_install_patterns)
 
     p_list = sub.add_parser("list-patterns", help="List active patterns")

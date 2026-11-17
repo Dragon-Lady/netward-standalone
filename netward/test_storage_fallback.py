@@ -65,6 +65,9 @@ async def test_daemon_starts_and_routes_when_database_is_unwritable(tmp_path, mo
                                   "upstream_target": str(server.make_url("/")), "storage_path": str(db)}))
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).resolve().parent.parent)
+    snapshots = tmp_path / 'private-temp'
+    snapshots.mkdir(mode=0o700)
+    env['TMPDIR'] = str(snapshots)
     proc = None
     try:
         proc = await asyncio.create_subprocess_exec(sys.executable, "-m", "netward", "--config", str(config),
@@ -94,11 +97,15 @@ async def test_daemon_starts_and_routes_when_database_is_unwritable(tmp_path, mo
                         assert await response.text() == "upstream response"
                     assert path in served
             assert proc.returncode is None
+            if mode == 'readonly':
+                assert list(snapshots.glob('netward-*/*')), 'exercise actual snapshot fallback'
     finally:
         if proc is not None:
             if proc.returncode is None:
                 proc.terminate()
             _, errors = await asyncio.wait_for(proc.communicate(), 5)
+            assert proc.returncode == 0, errors.decode()
+            assert list(snapshots.iterdir()) == [], 'SIGTERM must remove private snapshot files'
         await server.close()
         if original_hash is not None:
             assert hashlib.sha256(db.read_bytes()).hexdigest() == original_hash
