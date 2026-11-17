@@ -1,12 +1,12 @@
 """
 Net Ward -- Bootstrap
 
-Seed storage with the built-in vendor pattern set on first run.
+Refresh storage with the built-in vendor definitions on startup.
 Called automatically by start_capture_loop before the proxy binds.
 
 install_vendor_patterns(storage, force=False) -> tuple[int, int]
     Reads netward/data/vendor_patterns.json, upserts MirrorResponses
-    then Patterns. Idempotent: second call is a no-op unless force=True.
+    then Patterns, preserving operator policy and match history.
     Returns (patterns_installed, mirrors_installed).
 
 Raises BootstrapError on malformed JSON — never touches storage in
@@ -18,6 +18,8 @@ import json
 import time
 from pathlib import Path
 from typing import Optional
+
+from netward.regex_policy import PatternPolicyError
 
 _VENDOR_DATA_PATH = Path(__file__).parent / "data" / "vendor_patterns.json"
 
@@ -55,42 +57,26 @@ def install_vendor_patterns(
     """
     Seed vendor patterns + mirror responses into storage.
 
-    force=False  -- no-op if any vendor-origin patterns already exist.
-    force=True   -- re-upserts regardless of existing state.
+    force=False  -- insert missing definitions and refresh changed definitions.
+    force=True   -- refresh all vendor definitions, preserving policy/history.
     _data_path   -- override for tests; production always uses the package default.
 
     Returns (patterns_installed, mirrors_installed).
     """
-    # Idempotency guard
-    if not force:
-        try:
-            existing = storage.patterns_active()
-            if any(p.get("origin") == "vendor" for p in existing):
-                return (0, 0)
-        except Exception:
-            pass  # storage errors fall through to a fresh install attempt
-
     data = load_vendor_data(_data_path)
     mirrors, patterns = data["mirror_responses"], data["patterns"]
-
     now = time.time()
-
-    # Upsert mirrors first — patterns reference them by id
-    mirrors_installed = 0
-    for mr in mirrors:
-        mr = dict(mr)
-        if not mr.get("created_at"):
-            mr["created_at"] = now
-        storage.mirror_response_upsert(mr)
-        mirrors_installed += 1
-
-    # Upsert patterns
-    patterns_installed = 0
-    for pat in patterns:
-        pat = dict(pat)
-        if not pat.get("created_at"):
-            pat["created_at"] = now
-        storage.patterns_upsert(pat)
-        patterns_installed += 1
-
-    return (patterns_installed, mirrors_installed)
+    try:
+        mirrors = [dict(m, created_at=m.get("created_at") or now) for m in mirrors]
+        patterns = [dict(p, created_at=p.get("created_at") or now) for p in patterns]
+        mirror_ids = {m["id"] for m in mirrors}
+        if len(mirror_ids) != len(mirrors) or len({p["id"] for p in patterns}) != len(patterns):
+            raise ValueError("duplicate vendor definition id")
+        if any(p["origin"] != "vendor" or p.get("mirror_response_id") not in mirror_ids
+               for p in patterns):
+            raise ValueError("invalid vendor origin or mirror reference")
+        return storage.install_vendor_bundle(patterns, mirrors, force=force)
+    except PatternPolicyError:
+        raise
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+        raise BootstrapError("invalid vendor definition structure") from exc

@@ -138,3 +138,122 @@ def test_basic_auth_probe_is_seeded_but_disabled_by_default(storage):
     ).fetchone()
     assert row is not None, "basic_auth_probe must be seeded into storage"
     assert row["expires_at"] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_upgrade_adds_definitions_and_preserves_policy_and_history(storage, tmp_path, force):
+    pack = _write_vendor_json(tmp_path / "old.json", n_patterns=2, n_mirrors=1)
+    mod.install_vendor_patterns(storage, _data_path=pack)
+    storage._conn.execute("UPDATE patterns SET expires_at=1,match_count=83,last_matched=120 "
+                          "WHERE id='vendor_test_0'")
+    created = storage._conn.execute("SELECT created_at FROM patterns WHERE id='vendor_test_0'").fetchone()[0]
+    new_pack = _write_vendor_json(tmp_path / "new.json", n_patterns=3, n_mirrors=2)
+    new = json.loads(new_pack.read_text())
+    new['patterns'][0]['signature'] = r'^/changed-diagnostic$'
+    new['mirror_responses'][0]['body_template'] = 'updated inert response'
+    new_pack.write_text(json.dumps(new))
+    mod.install_vendor_patterns(storage, force=force, _data_path=new_pack)
+    row = storage._conn.execute("SELECT * FROM patterns WHERE id='vendor_test_0'").fetchone()
+    assert (row['expires_at'],row['match_count'],row['last_matched'],row['created_at']) == (1,83,120,created)
+    assert row['signature'] == r'^/changed-diagnostic$'
+    assert {p['id'] for p in storage.patterns_active()} == {'vendor_test_1','vendor_test_2'}
+    assert storage.mirror_response_lookup('mirror_0')['body_template'] == 'updated inert response'
+    assert mod.install_vendor_patterns(storage, _data_path=new_pack) == (0,0)
+
+
+@pytest.mark.parametrize("force", [False, True])
+def test_refresh_does_not_reenable_all_disabled_rules(storage, tmp_path, force):
+    pack = _write_vendor_json(tmp_path / 'pack.json')
+    mod.install_vendor_patterns(storage, _data_path=pack)
+    storage._conn.execute('UPDATE patterns SET expires_at=1')
+    mod.install_vendor_patterns(storage, force=force, _data_path=pack)
+    assert storage.patterns_active() == []
+    assert storage._conn.execute('SELECT COUNT(*) FROM patterns').fetchone()[0] == 3
+
+
+def test_refresh_preserves_explicit_enable_of_optional_rule(storage):
+    mod.install_vendor_patterns(storage)
+    storage._conn.execute("UPDATE patterns SET expires_at=NULL WHERE id='basic_auth_probe'")
+    mod.install_vendor_patterns(storage, force=True)
+    assert 'basic_auth_probe' in {p['id'] for p in storage.patterns_active()}
+
+
+def test_purge_retains_disabled_vendor_policy(storage, tmp_path):
+    pack = _write_vendor_json(tmp_path / 'pack.json')
+    mod.install_vendor_patterns(storage, _data_path=pack)
+    storage._conn.execute('UPDATE patterns SET expires_at=1')
+    assert storage.patterns_purge_expired(time.time()) == 0
+    mod.install_vendor_patterns(storage, _data_path=pack)
+    assert storage.patterns_active() == []
+
+
+@pytest.mark.parametrize('force', [False, True])
+def test_refresh_preserves_nonvendor_collision_and_shared_mirror(storage, tmp_path, force):
+    pack = _write_vendor_json(tmp_path / 'pack.json')
+    mod.install_vendor_patterns(storage, _data_path=pack)
+    storage._conn.execute("UPDATE patterns SET origin='operator',signature='^/custom-policy$' "
+                          "WHERE id='vendor_test_0'")
+    storage._conn.execute("UPDATE mirror_responses SET body_template='operator content' WHERE id='mirror_0'")
+    mod.install_vendor_patterns(storage, force=force, _data_path=pack)
+    row = storage._conn.execute("SELECT origin,signature FROM patterns WHERE id='vendor_test_0'").fetchone()
+    assert tuple(row) == ('operator','^/custom-policy$')
+    assert storage.mirror_response_lookup('mirror_0')['body_template'] == 'operator content'
+
+
+def test_invalid_later_pattern_cannot_partially_install(storage, tmp_path):
+    from netward.regex_policy import PatternPolicyError
+    pack = _write_vendor_json(tmp_path / 'pack.json')
+    data = json.loads(pack.read_text())
+    data['patterns'][-1]['signature'] = '(x+)+$'
+    pack.write_text(json.dumps(data))
+    with pytest.raises(PatternPolicyError):
+        mod.install_vendor_patterns(storage, _data_path=pack)
+    assert storage._conn.execute('SELECT COUNT(*) FROM patterns').fetchone()[0] == 0
+    assert storage._conn.execute('SELECT COUNT(*) FROM mirror_responses').fetchone()[0] == 0
+
+
+def test_database_failure_rolls_back_entire_refresh(storage, tmp_path):
+    import sqlite3
+    old = _write_vendor_json(tmp_path / 'old.json', n_patterns=1, n_mirrors=1)
+    mod.install_vendor_patterns(storage, _data_path=old)
+    storage._conn.execute("CREATE TRIGGER reject_new BEFORE INSERT ON patterns "
+                          "WHEN NEW.id='vendor_test_1' BEGIN SELECT RAISE(ABORT,'test fault'); END")
+    before = list(storage._conn.iterdump())
+    new = _write_vendor_json(tmp_path / 'new.json', n_patterns=2, n_mirrors=2)
+    with pytest.raises(sqlite3.IntegrityError):
+        mod.install_vendor_patterns(storage, _data_path=new)
+    assert list(storage._conn.iterdump()) == before
+
+
+@pytest.mark.parametrize('fault', ['duplicate','missing_mirror','wrong_origin','missing_field'])
+def test_invalid_definition_pack_fails_before_writes(storage, tmp_path, fault):
+    pack = _write_vendor_json(tmp_path / 'pack.json')
+    data = json.loads(pack.read_text())
+    if fault == 'duplicate':
+        data['patterns'].append(data['patterns'][0])
+    elif fault == 'missing_mirror':
+        data['patterns'][0]['mirror_response_id'] = 'absent'
+    elif fault == 'wrong_origin':
+        data['patterns'][0]['origin'] = 'operator'
+    else:
+        del data['patterns'][0]['kind']
+    pack.write_text(json.dumps(data))
+    with pytest.raises(mod.BootstrapError):
+        mod.install_vendor_patterns(storage, _data_path=pack)
+    assert storage.patterns_active() == []
+    assert storage._conn.execute('SELECT COUNT(*) FROM mirror_responses').fetchone()[0] == 0
+
+
+def test_cli_force_preserves_disable_and_optional_enable(tmp_path):
+    from netward.cli import main
+    db = tmp_path / 'commands.db'
+    def command(*args):
+        main(['--db',str(db),*args])
+    command('install-patterns')
+    command('disable-pattern','env_file_probe')
+    command('enable-pattern','runtime_configuration_file_probe')
+    command('install-patterns','--force')
+    with Storage(db) as store:
+        active = {p['id'] for p in store.patterns_active()}
+        assert 'env_file_probe' not in active
+        assert 'runtime_configuration_file_probe' in active

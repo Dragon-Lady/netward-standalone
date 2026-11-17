@@ -16,6 +16,7 @@ update_source_reputation(source) -> Source
 from __future__ import annotations
 
 import logging
+import posixpath
 import re
 import time
 from typing import Optional, TypedDict
@@ -68,11 +69,25 @@ def _pattern_sort_key(p: Pattern) -> tuple:
     return (rank, secondary, tertiary)
 
 
+def _strip_path_padding(segment: str) -> str:
+    segment = re.sub(r"[\x00\s]+$", "", segment)
+    # Preserve actual navigation segments for POSIX path resolution.
+    if segment in (".", ".."):
+        return segment
+    return re.sub(r"[.\x00\s]+$", "", segment)
+
+
 def _normalize_path_for_match(path: str) -> str:
     path_part, sep, query = path.partition("?")
-    normalized = path_part.lower()
-    if len(normalized) > 1:
-        normalized = normalized.rstrip("/") or "/"
+    # Normalise only the classifier's copy. Forwarding retains the wire path.
+    normalized = re.sub(r"/+", "/", path_part.lower())
+    if normalized:
+        normalized = posixpath.normpath(normalized)
+        parent, slash, tail = normalized.rpartition("/")
+        tail = _strip_path_padding(tail.partition(";")[0])
+        tail = _strip_path_padding(tail.removesuffix("::$data"))
+        # A final parameter/padding suffix can hide a dot segment too.
+        normalized = posixpath.normpath(parent + slash + tail)
     if sep:
         return f"{normalized}?{query.lower()}"
     return normalized

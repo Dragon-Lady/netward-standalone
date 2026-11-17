@@ -262,7 +262,7 @@ def test_path_patterns_do_not_match_legit_traffic(patterns, legit_path):
     A false-positive in the default set ships malware-shaped breakage
     to every operator on first install."""
     for p in patterns:
-        if p["kind"] != "path":
+        if p["kind"] != "path" or p.get("expires_at") is not None:
             continue
         regex = re.compile(p["signature"])
         if regex.search(legit_path):
@@ -270,6 +270,84 @@ def test_path_patterns_do_not_match_legit_traffic(patterns, legit_path):
                 f"pattern {p['id']!r} (signature={p['signature']!r}) "
                 f"falsely matches legit path {legit_path!r}"
             )
+
+
+@pytest.mark.parametrize('pattern_id,path', [
+    ('env_file_probe','/release-coral/.ENV12'),
+    ('env_file_probe','/release-coral/.env~'),
+    ('env_file_probe','/release-coral/.env-preview'),
+    ('php_diagnostic_file_probe','/stage-coral/PHP_INFO.php.old'),
+    ('named_environment_file_probe','/stage-coral/mail-preview.env'),
+    ('service_account_file_probe','/stage-coral/serviceAccountKey.json'),
+    ('service_account_file_probe','/stage-coral/firebase-adminsdk-demo-42.json'),
+    ('credential_dotfile_probe','/.docker/config.json'),
+    ('credential_dotfile_probe','/.aws/credentials.save'),
+    ('private_key_file_probe','/.ssh/id_ed25519'),
+    ('infrastructure_state_file_probe','/.terraform/terraform.tfstate.backup'),
+    ('git_metadata_probe','/.git/logs/refs/heads/preview-coral'),
+    ('git_metadata_probe','/.git/info/refs'),
+    ('other_vcs_metadata_probe','/.hg/store/requires'),
+    ('source_backup_file_probe','/stage-coral/database-settings.php.bak'),
+    ('diagnostic_log_file_probe','/stage-coral/storage/logs/laravel.log'),
+    ('private_tool_config_probe','/.claude/settings.local.json'),
+])
+@pytest.mark.parametrize('ending', ['', '/'])
+def test_new_default_rules_through_classifier(patterns,pattern_id,path,ending):
+    active = [p for p in patterns if p.get('expires_at') is None]
+    result = classify({'request':{'path':path+ending}}, {'patterns':active})
+    assert result['fire_mirror']
+    assert result['probe']['pattern_id'] == pattern_id
+
+
+@pytest.mark.parametrize('path', [
+    '/assets/runtime-config.js', '/config.js', '/config.json', '/env.js', '/env',
+    '/settings.json', '/appsettings.json', '/translations/en/auth.json',
+    '/products/key.json', '/test.php', '/info.php', '/credentials', '/server-status',
+    '/_profiler/latest', '/docs/phpinfo', '/graphql', '/api/config',
+    '/wp-includes/wlwmanifest.xml', '/backup.zip', '/data.sql', '/docker-compose.yml',
+    '/.ssh/id_ed25519.pub', '/.git/HEAD.bak', '/docs/.git/HEAD',
+    '/stage-coral/service-account.json.html', '/stage-coral/phpinfo.php.jpg',
+    '/downloads/settings.php.bak.txt', '/docs/terraform.tfstate',
+    '/.well-known/security.txt', '/.well-known/acme-challenge/token-coral',
+    '/.well-known/openid-configuration', '/api/users', '/api/v1/widgets',
+    '/api/auth/login', '/docs/phpinfo.', '/config.js;version=2',
+    '/.git/config/../../index.html', '/.env/..', '/.env/../healthz',
+    '/docs/.git/HEAD.', '/.git/HEAD.bak;', '/.ssh/id_ed25519.pub::$data',
+    '/docs;view=compact/.git/config', '/%252egit/config',
+])
+def test_new_defaults_leave_normal_pages_and_lookalikes_alone(patterns,path):
+    active = [p for p in patterns if p.get('expires_at') is None]
+    assert not classify({'request':{'path':path}}, {'patterns':active})['fire_mirror']
+
+
+@pytest.mark.parametrize('pattern_id,path', [
+    ('short_php_diagnostic_probe','/info.php'),
+    ('framework_diagnostic_route_probe','/stage-coral/actuator/heapdump'),
+    ('deployment_file_probe','/.github/workflows/preview-coral.yml'),
+    ('runtime_configuration_file_probe','/runtime-config.js'),
+    ('database_download_probe','/database_backup.sql.gz'),
+    ('archive_download_probe','/public_html.tar.gz'),
+    ('cms_manifest_probe','/stage-coral/wp-includes/wlwmanifest.xml'),
+])
+def test_optional_families_require_operator_enable(patterns,pattern_id,path):
+    pattern = next(p for p in patterns if p['id'] == pattern_id)
+    assert pattern['expires_at'] == 1
+    assert classify({'request':{'path':path}}, {'patterns':[pattern]})['fire_mirror']
+    active = [p for p in patterns if p.get('expires_at') is None]
+    assert not classify({'request':{'path':path}}, {'patterns':active})['fire_mirror']
+
+
+@pytest.mark.parametrize('mirror_id', ['php_diagnostic_fake','service_account_fake'])
+def test_new_mirrors_render_without_host_data_or_usable_credentials(mirrors,mirror_id):
+    from netward.mirror import fire_mirror
+    mirror = next(m for m in mirrors if m['id'] == mirror_id)
+    response = fire_mirror({'request':{'path':'/synthetic-check','headers':{}}},mirror)
+    assert response['status'] == 200
+    assert '{{' not in response['body']
+    if mirror_id == 'service_account_fake':
+        content = json.loads(response['body'])
+        assert content['private_key'] == ''
+        assert content['client_email'].endswith('@example.invalid')
 
 
 @pytest.mark.parametrize(("pattern_id", "probe_path"), [

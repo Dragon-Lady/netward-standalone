@@ -234,6 +234,7 @@ class UnavailableStorage:
 
     sources_lookup = sources_upsert = patterns_active = _unavailable
     patterns_upsert = mirror_response_upsert = mirror_response_lookup = _unavailable
+    install_vendor_bundle = _unavailable
     probes_log = alerts_record = alerts_pending = alerts_mark_delivered = _unavailable
 
     def close(self):
@@ -431,10 +432,77 @@ class Storage:
     def patterns_purge_expired(self, now: float) -> int:
         with self._lock:
             cur = self._conn.execute(
-                "DELETE FROM patterns WHERE expires_at IS NOT NULL AND expires_at <= ?",
+                "DELETE FROM patterns WHERE origin != 'vendor' "
+                "AND expires_at IS NOT NULL AND expires_at <= ?",
                 (now,),
             )
             return cur.rowcount
+
+    def install_vendor_bundle(self, patterns, mirrors, *, force=False) -> tuple[int, int]:
+        """Atomically refresh vendor definitions without resetting operator state.
+
+        Disabled vendor rows are retained as policy records. Non-vendor patterns,
+        and mirrors used by non-vendor patterns, are never overwritten.
+        """
+        from netward.regex_policy import validate_pattern_signature
+
+        # Validate and serialise the entire pack before the first write.
+        pattern_rows = []
+        for pattern in patterns:
+            validate_pattern_signature(pattern["signature"])
+            cols, vals = _pattern_columns(pattern)
+            pattern_rows.append(dict(zip(cols, vals)))
+        mirror_rows = [dict(zip(*_mirror_response_columns(m))) for m in mirrors]
+        pattern_fields = ("kind", "signature", "description", "severity",
+                          "mirror_response_id", "confidence", "header_name")
+
+        def refresh(table, incoming, fields, existing):
+            if existing is None:
+                columns = list(incoming)
+                self._conn.execute(
+                    f"INSERT INTO {table} ({','.join(columns)}) "
+                    f"VALUES ({','.join('?' for _ in columns)})",
+                    [incoming[c] for c in columns],
+                )
+                return 1
+            if force or any(existing[c] != incoming[c] for c in fields):
+                self._conn.execute(
+                    f"UPDATE {table} SET {','.join(c + '=?' for c in fields)} WHERE id=?",
+                    [incoming[c] for c in fields] + [incoming["id"]],
+                )
+                return 1
+            return 0
+
+        with self._lock:
+            self._conn.execute("SAVEPOINT vendor_refresh")
+            try:
+                owned = set()
+                protected = set()
+                for row in self._conn.execute("SELECT origin, mirror_response_id FROM patterns"):
+                    (owned if row["origin"] == "vendor" else protected).add(row["mirror_response_id"])
+                mirror_count = 0
+                for incoming in mirror_rows:
+                    existing = self._conn.execute(
+                        "SELECT * FROM mirror_responses WHERE id=?", (incoming["id"],)
+                    ).fetchone()
+                    if existing is not None and (incoming["id"] in protected or incoming["id"] not in owned):
+                        continue
+                    fields = [c for c in incoming if c not in ("id", "created_at")]
+                    mirror_count += refresh("mirror_responses", incoming, fields, existing)
+                pattern_count = 0
+                for incoming in pattern_rows:
+                    existing = self._conn.execute(
+                        "SELECT * FROM patterns WHERE id=?", (incoming["id"],)
+                    ).fetchone()
+                    if existing is not None and existing["origin"] != "vendor":
+                        continue
+                    pattern_count += refresh("patterns", incoming, pattern_fields, existing)
+                self._conn.execute("RELEASE vendor_refresh")
+                return pattern_count, mirror_count
+            except BaseException:
+                self._conn.execute("ROLLBACK TO vendor_refresh")
+                self._conn.execute("RELEASE vendor_refresh")
+                raise
 
     # ----- Probe -----
 

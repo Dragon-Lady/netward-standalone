@@ -192,9 +192,11 @@ def test_pattern_expires_at_round_trips(storage):
     assert matches[0]["expires_at"] == pytest.approx(expiry)
 
 
-def test_pattern_purge_expired(storage):
+@pytest.mark.parametrize('origin', ['local', 'mesh'])
+def test_pattern_purge_expired(storage, origin):
     fresh = _make_pattern(signature=r"^/keep")
     stale = _make_pattern(signature=r"^/drop", expires_at=time.time() - 10)
+    stale['origin'] = origin
     storage.patterns_upsert(fresh)
     storage.patterns_upsert(stale)
 

@@ -26,6 +26,7 @@ from typing import Optional
 
 import aiohttp
 from aiohttp import web
+from yarl import URL
 
 from netward.schema import (
     ALERT_DEDUP_WINDOW_SECS,
@@ -306,9 +307,11 @@ async def _forward_upstream(
     max_body_bytes: int = UPSTREAM_MAX_BODY_BYTES,
 ) -> Optional[web.Response]:
     """Forward to upstream. Return None when upstream is unavailable."""
-    url = upstream.rstrip("/") + request.path
-    if request.query_string:
-        url += "?" + request.query_string
+    # Matching uses a normalised copy; the upstream receives the wire target,
+    # including repeated slashes, encoded delimiters and duplicate query keys.
+    # rel_url also strips an absolute-form request's client-supplied authority.
+    # Canonicalise the configured host first (including international names).
+    url = URL(str(URL(upstream)).rstrip("/") + request.rel_url.raw_path_qs, encoded=True)
     fwd_headers = {
         k: v for k, v in request.headers.items()
         if k.lower() not in _HOP_BY_HOP and k.lower() != "host"
@@ -327,7 +330,7 @@ async def _forward_upstream(
             ) as resp:
                 content = await _read_capped_body(resp, max_body_bytes)
                 if content is None:
-                    _log.warning("Net Ward upstream response exceeded body cap; using default mirror")
+                    _log.warning("Net Ward upstream response exceeded body cap")
                     return None
                 resp_headers = {
                     k: v for k, v in resp.headers.items()
@@ -335,11 +338,11 @@ async def _forward_upstream(
                 }
                 return web.Response(status=resp.status, headers=resp_headers, body=content)
         except asyncio.TimeoutError:
-            _log.warning("Net Ward upstream timed out; using default mirror")
+            _log.warning("Net Ward upstream timed out")
             return None
         except Exception as exc:
             # Exception messages can contain credentials, URLs, or request data.
-            _log.warning("Net Ward upstream forwarding failed; using default mirror: %s",
+            _log.warning("Net Ward upstream forwarding failed: %s",
                          type(exc).__name__)
             return None
 
@@ -373,6 +376,16 @@ def _fire_and_forget(storage, probe: Probe) -> None:
         pass  # no running loop (e.g., during sync tests)
     except Exception as exc:
         _warn_storage("probe log scheduling", exc)
+
+
+def _upstream_unavailable(probe: Probe) -> web.Response:
+    """Unmatched traffic must expose an upstream outage to users and monitors."""
+    probe["mirror_fired"] = False
+    probe["upstream_passed"] = False
+    probe.pop("response_id", None)
+    return web.Response(status=503, text="Service unavailable.\n", headers={
+        "Retry-After": "30", "Cache-Control": "no-store",
+    })
 
 
 def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSession):
@@ -459,11 +472,7 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
                 max_body_bytes=max_body_bytes,
             )
             if upstream_response is None:
-                probe["mirror_fired"] = True
-                probe["upstream_passed"] = False
-                response = _mirror_response_from_probe(
-                    probe, _select_default_mirror(source_id, request.path)
-                )
+                response = _upstream_unavailable(probe)
             else:
                 probe["upstream_passed"] = True
                 response = upstream_response
@@ -534,9 +543,7 @@ def _make_handler(config: OperatorConfig, storage, session: aiohttp.ClientSessio
                 max_body_bytes=max_body_bytes,
             )
             if upstream_response is None:
-                updated["mirror_fired"] = True
-                updated["upstream_passed"] = False
-                response = _mirror_response_from_probe(updated, _default_mr)
+                response = _upstream_unavailable(updated)
             else:
                 updated["upstream_passed"] = True
                 if classification == "unknown":
@@ -601,42 +608,49 @@ async def start_capture_loop(config: OperatorConfig, storage=None) -> None:
                 storage = UnavailableStorage()
                 _log.warning("Net Ward started without persistence; using bundled probe defaults")
 
+    session = runner = dispatcher = recovery_task = None
     try:
-        from netward import bootstrap as _bootstrap
-        _bootstrap.install_vendor_patterns(storage)
-    except Exception as exc:
-        _warn_storage("vendor seed", exc)
+        try:
+            from netward import bootstrap as _bootstrap
+            _bootstrap.install_vendor_patterns(storage)
+        except Exception as exc:
+            _warn_storage("vendor seed", exc)
 
-    timeout = _client_timeout_from_config(config)
-    limit = _max_concurrency_from_config(config)
-    connector = aiohttp.TCPConnector(limit=limit)
-    session = aiohttp.ClientSession(connector=connector, timeout=timeout)
-    _proxy_handler = _make_handler(config, storage, session)
-    recovery_task = asyncio.create_task(_proxy_handler.alert_dispatcher.recover_pending())
+        timeout = _client_timeout_from_config(config)
+        limit = _max_concurrency_from_config(config)
+        connector = aiohttp.TCPConnector(limit=limit)
+        session = aiohttp.ClientSession(connector=connector, timeout=timeout)
+        _proxy_handler = _make_handler(config, storage, session)
+        dispatcher = _proxy_handler.alert_dispatcher
+        recovery_task = asyncio.create_task(dispatcher.recover_pending())
 
-    @web.middleware
-    async def catch_all(request: web.Request, handler) -> web.Response:
-        return await _proxy_handler(request)
+        @web.middleware
+        async def catch_all(request: web.Request, handler) -> web.Response:
+            return await _proxy_handler(request)
 
-    app = web.Application(middlewares=[catch_all])
-
-    runner = web.AppRunner(app)
-    await runner.setup()
-
-    listen = config.get("listen_address", "0.0.0.0:8080")
-    host, _, port_str = listen.rpartition(":")
-    if not host:
-        host = "0.0.0.0"
-    site = web.TCPSite(runner, host, int(port_str))
-    await site.start()
-
-    try:
+        app = web.Application(middlewares=[catch_all])
+        runner = web.AppRunner(app)
+        await runner.setup()
+        listen = config.get("listen_address", "0.0.0.0:8080")
+        host, _, port_str = listen.rpartition(":")
+        site = web.TCPSite(runner, host or "0.0.0.0", int(port_str))
+        await site.start()
         await asyncio.Event().wait()
     finally:
-        recovery_task.cancel()
-        await asyncio.gather(recovery_task, return_exceptions=True)
-        await _proxy_handler.alert_dispatcher.close()
-        await session.close()
-        await runner.cleanup()
-        if owns_storage:
-            storage.close()
+        try:
+            if runner is not None:
+                await runner.cleanup()
+        finally:
+            try:
+                if recovery_task is not None:
+                    recovery_task.cancel()
+                    await asyncio.gather(recovery_task, return_exceptions=True)
+                if dispatcher is not None:
+                    await dispatcher.close()
+            finally:
+                try:
+                    if session is not None:
+                        await session.close()
+                finally:
+                    if owns_storage:
+                        storage.close()

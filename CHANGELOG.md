@@ -3,7 +3,42 @@
 All notable changes to Net Ward are documented here.
 Format follows Keep a Changelog. Versioning is semver.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-16
+
+### Fixed
+
+- Collapse repeated slashes and resolve dot segments for classification. Remove
+  final-segment trailing dots, NULs and whitespace, path parameters and `::$data`
+  suffixes. Forward unmatched paths and queries with their original encoding.
+- Refresh bundled definitions on existing databases at startup and through
+  `install-patterns`. Preserve operator enables/disables, creation timestamps,
+  match counts and last-match times, including during `--force` refresh.
+- Keep disabled vendor rows during expiry cleanup and preserve non-vendor
+  patterns and their shared mirrors. Apply each definition refresh atomically.
+- Return an uncached 503 for unmatched requests when the upstream cannot serve
+  them, including classification failures, timeouts and response-size limits.
+  Matched probes retain their configured decoy responses.
+- Handle SIGTERM through graceful shutdown on platforms with event-loop signal
+  support. Close owned storage and remove private fallback snapshots on shutdown
+  and listener setup failures. SIGKILL and power loss cannot run cleanup.
+
+### Added
+
+- Conservative detection of PHP diagnostic files, named environment files,
+  service-account credentials, credential dotfiles, private key files,
+  infrastructure state, repository metadata, diagnostic logs and source backups.
+- Separately enableable, disabled-by-default rules for ambiguous diagnostics,
+  deployment files, runtime configuration, database downloads, site archives and
+  CMS discovery. Review application routes before enabling these families.
+
+### Upgrade notes
+
+- Stop the proxy and back up its database before upgrading. The next startup
+  automatically refreshes vendor definitions.
+  Vendor-owned matching and mirror content can change; use separate operator-origin
+  rules for custom definitions. Preserve the database backup for package rollback.
+- The safe refresh behavior belongs to this update. Older `install-patterns
+  --force` commands still reset policy and counters.
 
 ## [0.4.14] - 2026-11-10
 
