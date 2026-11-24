@@ -20,17 +20,17 @@ Net Ward sits in front of your HTTP service as a reverse proxy. Real traffic pas
 
 **Website:** [dragon-lady.github.io/netward-standalone](https://dragon-lady.github.io/netward-standalone/)
 
-**Version 0.5.0** expands probe matching, refreshes definitions while preserving
-operator settings and history, and returns 503 for unmatched requests when the
-upstream is unavailable. Stop the proxy and back up its database before upgrading;
-review the definition-refresh and rollback guidance below.
+**Version 0.5.1** adds an exact, case-insensitive match for the
+`artex-recon/1.0` User-Agent to the scanner rule. Stop the proxy and back up
+its database before upgrading. Startup refreshes the bundled definitions and
+preserves operator settings and match history.
 
 ---
 
 ## Quick Start
 
 ```bash
-python -m pip install --upgrade "netward>=0.5.0"
+python -m pip install --upgrade "netward>=0.5.1"
 # Create config.json in a directory owned by your user (not directly in /tmp).
 cat > config.json <<'JSON'
 {
@@ -44,7 +44,7 @@ JSON
 python -m netward --config config.json
 ```
 
-Version 0.5.0 or newer is the recommended baseline for new installations and
+Version 0.5.1 or newer is the recommended baseline for new installations and
 upgrades. Older releases remain available for reproducibility; new deployments
 should use the current release.
 
@@ -472,4 +472,4 @@ If Net Ward is saving your service some grief and you'd like to help keep it tes
 
 ---
 
-*[Net Ward v0.5.0](CHANGELOG.md)*
+*[Net Ward v0.5.1](CHANGELOG.md)*

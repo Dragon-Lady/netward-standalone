@@ -352,6 +352,21 @@ def test_vendor_seed_scanner_ua_redirects_to_honeypot(storage):
     )
 
 
+@pytest.mark.parametrize(("user_agent", "expected_status"), [
+    ("artex-recon/1.0", 302),
+    ("ARTEX-recon/1.0", 302),
+    ("artex-recon/1.0.1", 200),
+    ("artex-recon/1x0", 200),
+    ("ExampleBrowser/2.0 (artex-recon/1.0)", 200),
+])
+def test_vendor_seed_artex_user_agent_is_exact(storage, user_agent, expected_status):
+    out = asyncio.run(_run_vendor_scenario(storage, [{
+        "path": "/", "headers": {"User-Agent": user_agent}, "follow": False,
+    }]))
+    assert out["results"][0][0] == expected_status
+    assert out["upstream_served"] == (["/"] if expected_status == 200 else [])
+
+
 def test_vendor_seed_scanner_ua_ignores_non_user_agent_headers(storage):
     out = asyncio.run(_run_vendor_scenario(storage, [{
         "path": "/",

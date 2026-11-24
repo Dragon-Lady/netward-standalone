@@ -280,7 +280,7 @@
     {
       "id": "scanner_ua_probe",
       "kind": "header",
-      "signature": "(?i)\\b(sqlmap|nikto|nuclei|masscan|zgrab|gobuster|dirbuster|wfuzz|wpscan|hydra|nmap|feroxbuster|ffuf|dirb|burpsuite|burp|metasploit|zap)\\b",
+      "signature": "(?i)\\b(sqlmap|nikto|nuclei|masscan|zgrab|gobuster|dirbuster|wfuzz|wpscan|hydra|nmap|feroxbuster|ffuf|dirb|burpsuite|burp|metasploit|zap)\\b|\\Aartex-recon/1\\.0\\Z",
       "header_name": "User-Agent",
       "description": "Known scanner User-Agent fingerprint",
       "severity": "warn",

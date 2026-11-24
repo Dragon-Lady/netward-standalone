@@ -3,6 +3,14 @@
 All notable changes to Net Ward are documented here.
 Format follows Keep a Changelog. Versioning is semver.
 
+## [0.5.1] - 2026-11-24
+
+### Added
+
+- The scanner rule now redirects requests whose entire User-Agent value matches
+  `artex-recon/1.0`, case-insensitively. Operators who disabled the scanner
+  rule retain that setting when definitions refresh.
+
 ## [0.5.0] - 2026-11-16
 
 ### Fixed
